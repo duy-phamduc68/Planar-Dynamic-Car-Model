@@ -1,0 +1,20 @@
+# Core Graphics & Input
+pygame-ce>=2.4.0
+
+# Math & Physics
+numpy>=1.24.0
+scipy>=1.10.0
+
+# Real-time Debugging & Tuning
+dearpygui>=1.9.0
+
+# Offline Analysis & Plotting
+matplotlib>=3.7.0
+plotly>=5.15.0
+
+# Development & Testing
+pytest>=7.0.0
+black>=23.0.0
+
+# QoF-specific Utilities
+pyperclip>=1.8.0
