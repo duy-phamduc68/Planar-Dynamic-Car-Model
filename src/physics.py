@@ -35,6 +35,8 @@ class Vehicle2D:
         self.set_engine(engine_id, preserve_speed=False)
 
     def _sync_vehicle_from_engine(self):
+        if hasattr(self.engine, "L"):
+            self.L = float(self.engine.L)
         for attr in ["M", "F_ENGINE_MAX", "C_RR", "C_DRAG", "C_BRAKING"]:
             if hasattr(self.engine, attr):
                 setattr(self, attr, getattr(self.engine, attr))

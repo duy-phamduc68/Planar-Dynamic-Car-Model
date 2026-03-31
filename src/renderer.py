@@ -64,53 +64,6 @@ def draw_trc_slip_warning(surface, font_sm, sim_t, scene_h, car):
     surface.blit(bg, (x - 5, y - 3))
     surface.blit(lbl, (x, y))
 
-def draw_trajectory(surface, car, cx, cy, zoom, sw, sh):
-    """Draws the predicted kinematic path for the next 3 seconds."""
-    sim_x, sim_y, sim_h = car.x, car.y, car.heading
-    v, delta, L = car.v, car.steering_angle, car.L
-
-    # Render trajectory from the bicycle-model center (mid-wheelbase),
-    # while dynamics continue integrating the rear-axle state.
-    center_x = sim_x + 0.5 * L * math.cos(sim_h)
-    center_y = sim_y + 0.5 * L * math.sin(sim_h)
-    pts = [_transform(center_x, center_y, cx, cy, zoom, sw, sh)]
-
-    approx_car_len = max(0.1, L * 1.75)
-    max_path_len = 3.0 * approx_car_len
-    traced_len = 0.0
-    
-    dt = 0.1
-    for _ in range(30):
-        prev_x, prev_y = sim_x, sim_y
-        prev_h = sim_h
-        yaw_rate = (v * math.sin(delta)) / L if abs(delta) > 0.001 else 0.0
-        sim_h += yaw_rate * dt
-        sim_x += v * math.cos(sim_h) * dt
-        sim_y += v * math.sin(sim_h) * dt
-
-        center_prev_x = prev_x + 0.5 * L * math.cos(prev_h)
-        center_prev_y = prev_y + 0.5 * L * math.sin(prev_h)
-        center_x = sim_x + 0.5 * L * math.cos(sim_h)
-        center_y = sim_y + 0.5 * L * math.sin(sim_h)
-
-        step_len = math.hypot(center_x - center_prev_x, center_y - center_prev_y)
-        if traced_len + step_len > max_path_len and step_len > 1e-9:
-            t = (max_path_len - traced_len) / step_len
-            center_x = center_prev_x + (center_x - center_prev_x) * t
-            center_y = center_prev_y + (center_y - center_prev_y) * t
-            sx, sy = _transform(center_x, center_y, cx, cy, zoom, sw, sh)
-            pts.append((sx, sy))
-            break
-
-        traced_len += step_len
-        sx, sy = _transform(center_x, center_y, cx, cy, zoom, sw, sh)
-        pts.append((sx, sy))
-        if traced_len >= max_path_len:
-            break
-        
-    if len(pts) > 1:
-        pygame.draw.lines(surface, (255, 255, 0), False, pts, 2)
-
 def draw_car_topdown(surface, car, cx, cy, zoom, sw, sh, true_form):
     ppm = PIXELS_PER_METER * zoom
     raw_body_col = getattr(car, "chassis_color", CAR_BODY)

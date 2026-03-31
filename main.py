@@ -31,6 +31,12 @@ def _ensure_project_python():
     vpy = _venv_python_path()
     if vpy is None:
         return
+
+    # On Windows, avoid an extra process handoff from `main.py` because it can
+    # interfere with initial foreground focus for the SDL/Pygame window.
+    if os.name == "nt":
+        return
+
     current = Path(sys.executable).resolve()
     if current == vpy.resolve():
         return

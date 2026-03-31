@@ -1,13 +1,10 @@
 # Recommended config: 0.01 timestep, 120 fps
 
 # 0.001 ; 0.01 ; 0.16
-timestep: 0.010
+timestep: 0.001
 
 # 60 ; 120 ; 144
-fps: 120
-
-# true ; false
-trajectory: true
+fps: 144
 
 # true ; false
 true_form: false
@@ -39,6 +36,8 @@ kb_steer_ramp_release: 0.1
 # "TURBO_PERFORMANCE"
 # "SUV_TRUCK"
 # "ELECTRIC_EV"
+# "GO_KART"
+# "LIMOUSINE"
 # "MCLAREN_P1" (roughly estimated from public sources, very different from the others
 # McLaren P1 is added to validate a mathematical modeling paper of mine)
 preset: "DEFAULT"

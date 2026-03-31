@@ -30,7 +30,6 @@ from controls import (
     XINPUT_BUTTON_A,
     XINPUT_BUTTON_B,
     XINPUT_BUTTON_X,
-    XINPUT_BUTTON_Y,
     XINPUT_BUTTON_LEFT_SHOULDER,
     XINPUT_BUTTON_RIGHT_SHOULDER,
 )
@@ -39,10 +38,57 @@ from renderer import (
     draw_slip_patches,
     draw_trc_slip_warning,
     draw_car_topdown,
-    draw_trajectory,
     draw_hud_planar,
 )
 from ui import OptionsMenu, CheckBox
+
+
+def _focus_window_on_startup():
+    """Best-effort focus handoff for the simulator window on Windows."""
+    if os.name != "nt":
+        return False
+
+    try:
+        import ctypes
+
+        pygame.event.pump()
+        wm_info = pygame.display.get_wm_info() or {}
+        hwnd = wm_info.get("window") or wm_info.get("hwnd")
+        if not hwnd:
+            return False
+
+        user32 = ctypes.windll.user32
+        SW_SHOWNORMAL = 1
+        SW_RESTORE = 9
+        HWND_TOPMOST = -1
+        HWND_NOTOPMOST = -2
+        SWP_NOMOVE = 0x0002
+        SWP_NOSIZE = 0x0001
+        SWP_NOACTIVATE = 0x0010
+
+        fg_hwnd = user32.GetForegroundWindow()
+        this_tid = user32.GetCurrentThreadId()
+        fg_tid = user32.GetWindowThreadProcessId(fg_hwnd, None) if fg_hwnd else 0
+
+        if fg_tid and fg_tid != this_tid:
+            user32.AttachThreadInput(fg_tid, this_tid, True)
+
+        # Nudge z-order so Windows is more likely to accept foreground activation.
+        user32.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE)
+        user32.SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE)
+        user32.ShowWindow(hwnd, SW_SHOWNORMAL)
+        user32.ShowWindow(hwnd, SW_RESTORE)
+        user32.BringWindowToTop(hwnd)
+        user32.SetActiveWindow(hwnd)
+        focused = bool(user32.SetForegroundWindow(hwnd))
+
+        if fg_tid and fg_tid != this_tid:
+            user32.AttachThreadInput(fg_tid, this_tid, False)
+
+        return focused
+    except Exception:
+        # Keep startup resilient if focus APIs fail in restricted contexts.
+        return False
 
 
 def _parse_scalar(val):
@@ -97,7 +143,6 @@ def _load_global_settings():
     """Read startup settings from global config with safe fallbacks."""
     dt_default = 0.01
     fps_default = 60
-    traj_default = True
     true_form_default = False
     auto_shift_default = False
     inverse_steering_default = False
@@ -112,7 +157,6 @@ def _load_global_settings():
 
     cfg_dt = None
     cfg_fps = None
-    cfg_traj = None
     cfg_true_form = None
     cfg_auto_shift = None
     cfg_inverse_steering = None
@@ -141,8 +185,6 @@ def _load_global_settings():
                     if parsed is None:
                         continue
                     cfg_fps = parsed
-                elif key == "trajectory":
-                    cfg_traj = _parse_bool(val)
                 elif key == "true_form":
                     cfg_true_form = _parse_bool(val)
                 elif key == "auto_shift":
@@ -182,7 +224,6 @@ def _load_global_settings():
     else:
         fps = int(min(fps_options, key=lambda opt: abs(opt - cfg_fps)))
 
-    trajectory = traj_default if cfg_traj is None else cfg_traj
     true_form = true_form_default if cfg_true_form is None else cfg_true_form
     auto_shift = auto_shift_default if cfg_auto_shift is None else cfg_auto_shift
     inverse_steering = inverse_steering_default if cfg_inverse_steering is None else cfg_inverse_steering
@@ -203,7 +244,6 @@ def _load_global_settings():
     return (
         dt,
         fps,
-        trajectory,
         true_form,
         auto_shift,
         inverse_steering,
@@ -218,9 +258,12 @@ def _load_global_settings():
 
 class Simulator:
     def __init__(self):
+        if os.name == "nt":
+            os.environ.setdefault("SDL_HINT_FORCE_RAISEWINDOW", "1")
         pygame.init()
         pygame.display.set_caption("Car Physics Simulator - Model 6: Kinematics Turning with Long.5")
         self.screen = pygame.display.set_mode((1280, 720), pygame.RESIZABLE)
+        _focus_window_on_startup()
         self.screen_w, self.screen_h = self.screen.get_size()
 
         self.font_sm = pygame.font.SysFont("Consolas", 13)
@@ -230,7 +273,6 @@ class Simulator:
         (
             self.dt,
             self.target_fps,
-            cfg_trajectory,
             cfg_true_form,
             cfg_auto_shift,
             cfg_inverse_steering,
@@ -284,7 +326,6 @@ class Simulator:
         # UI Elements
         self._menu_btn = pygame.Rect(8, 8, 110, 30)
         self._true_form_cb = CheckBox(130, 14, "True Form", checked=cfg_true_form)
-        self._traj_cb      = CheckBox(260, 14, "Trajectory", checked=cfg_trajectory)
         self.options = OptionsMenu(self)
 
         # Apply config-selected preset after car/options initialization.
@@ -302,6 +343,8 @@ class Simulator:
         # Manual shift warning state (shown below timer when direction change is blocked).
         self._shift_warning_t = 0.0
         self._shift_warning_msg = ""
+        self._startup_focus_pending = (os.name == "nt")
+        self._startup_focus_deadline_ms = pygame.time.get_ticks() + 1500
         self._layout()
 
     def get_preset_names(self):
@@ -327,10 +370,12 @@ class Simulator:
                 return key
         return None
 
-    def _apply_default_preset(self, reset=True):
+    def _apply_default_preset(self, reset=True, preserve_speed=None):
         """Reset active engine/car fields to constructor defaults for the current engine."""
+        if preserve_speed is None:
+            preserve_speed = not reset
         engine_id = self.car.engine_id
-        self.car.set_engine(engine_id, preserve_speed=False)
+        self.car.set_engine(engine_id, preserve_speed=bool(preserve_speed))
         self._apply_auto_shift_mode()
         if hasattr(self.car, "chassis_color"):
             self.car.chassis_color = tuple(CAR_BODY)
@@ -377,6 +422,10 @@ class Simulator:
         spec = self._preset_registry.get(key)
         if not isinstance(spec, dict):
             return False
+
+        # Always start from true engine defaults so any omitted preset field
+        # falls back to canonical defaults instead of the previous preset state.
+        self._apply_default_preset(reset=False, preserve_speed=not reset)
 
         engine = getattr(self.car, "engine", None)
         if engine is None:
@@ -663,10 +712,8 @@ class Simulator:
             # Top UI Overlays
             if event.type == pygame.MOUSEMOTION:
                 self._true_form_cb.handle_event(event)
-                self._traj_cb.handle_event(event)
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and not self.options.visible:
                 if self._true_form_cb.handle_event(event): continue
-                if self._traj_cb.handle_event(event): continue
                 if self._menu_btn.collidepoint(event.pos): self.options.toggle(); continue
 
             if self.options.handle_event(event): continue
@@ -679,7 +726,7 @@ class Simulator:
                     self._w_held = is_down
                     if is_down:
                         self._last_keyboard_input_t = now
-                if event.key in (pygame.K_SPACE, pygame.K_DOWN):
+                if event.key in (pygame.K_SPACE, pygame.K_LSHIFT, pygame.K_s, pygame.K_DOWN):
                     self._s_held = is_down
                     if is_down:
                         self._last_keyboard_input_t = now
@@ -709,9 +756,6 @@ class Simulator:
                         self.zoom = max(0.2, self.zoom - 0.2)
                         self._last_keyboard_input_t = now
                     if event.key == pygame.K_4:
-                        self._traj_cb.checked = not self._traj_cb.checked
-                        self._last_keyboard_input_t = now
-                    if event.key == pygame.K_5:
                         self._true_form_cb.checked = not self._true_form_cb.checked
                         self._last_keyboard_input_t = now
                     if event.key == pygame.K_q:
@@ -782,8 +826,6 @@ class Simulator:
                 self._toggle_timer()
             if (btns & XINPUT_BUTTON_DPAD_RIGHT) and not (self._btns_prev & XINPUT_BUTTON_DPAD_RIGHT):
                 self._true_form_cb.checked = not self._true_form_cb.checked
-            if (btns & XINPUT_BUTTON_Y) and not (self._btns_prev & XINPUT_BUTTON_Y):
-                self._traj_cb.checked = not self._traj_cb.checked
             self._btns_prev = btns
         else:
             self._btns_prev = 0
@@ -921,7 +963,6 @@ class Simulator:
 
             draw_skidpad(self.screen, cam_x, cam_y, self.zoom, self.screen_w, self.scene_rect.height, self.grid_size)
             draw_slip_patches(self.screen, self._slip_patches, cam_x, cam_y, self.zoom, self.screen_w, self.scene_rect.height)
-            if self._traj_cb.checked: draw_trajectory(self.screen, self.car, cam_x, cam_y, self.zoom, self.screen_w, self.scene_rect.height)
             draw_car_topdown(self.screen, self.car, cam_x, cam_y, self.zoom, self.screen_w, self.scene_rect.height, self._true_form_cb.checked)
             draw_trc_slip_warning(self.screen, self.font_sm, self.sim_time, self.scene_rect.height, self.car)
             draw_hud_planar(self.screen, self.hud_rect, self.font_sm, self.font_lg, self.car, self.throttle, self.brake, self.steering, self._fps_display, self.sim_time)
@@ -953,7 +994,6 @@ class Simulator:
             self.screen.blit(self.font_sm.render("Options", True, (230, 235, 255)), (25, 15))
             # Checkboxes
             self._true_form_cb.draw(self.screen, self.font_sm)
-            self._traj_cb.draw(self.screen, self.font_sm)
             # Top-Right Text
             input_src = "Pad" if self.input_mode == "controller" else "KB"
             hud = self.car.get_hud_data()
@@ -983,6 +1023,10 @@ class Simulator:
 
             self.options.draw(self.screen, self.font_sm, self.font_md)
             pygame.display.flip()
+
+            if self._startup_focus_pending:
+                if _focus_window_on_startup() or pygame.time.get_ticks() >= self._startup_focus_deadline_ms:
+                    self._startup_focus_pending = False
         pygame.quit()
 
 if __name__ == "__main__":
