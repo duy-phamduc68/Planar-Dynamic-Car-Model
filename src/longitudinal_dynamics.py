@@ -272,7 +272,7 @@ class Long5Engine:
         self._update_force_hint()
         self._update_load_state(0.0)
 
-    def update(self, dt, throttle, brake):
+    def update(self, dt, throttle, brake, f_scrub=0.0):
         dt = max(1e-6, float(dt))
         throttle = _clamp(float(throttle), 0.0, 1.0)
         brake = _clamp(float(brake), 0.0, 1.0)
@@ -335,6 +335,13 @@ class Long5Engine:
         f_drag = self._aero_drag_force(v_prev)
         t_drag_wheel = float(getattr(self, "WHEEL_DAMPING", 0.0)) * omega_prev
 
+        # --- NEW: APPLY MODEL 7.5 SCRUB FORCE ---
+        f_scrub_directed = 0.0
+        if abs(v_prev) > 1e-3:
+            # Direct the magnitude against the current direction of travel
+            f_scrub_directed = abs(f_scrub) * math.copysign(1.0, v_prev)
+        # ----------------------------------------
+
         t_ext = t_drive - t_traction - t_drag_wheel
         t_brake = 0.0
         if abs(omega_prev) > 0.1:
@@ -348,7 +355,8 @@ class Long5Engine:
             else:
                 t_brake = math.copysign(max_hold, t_ext)
 
-        f_net = f_traction - f_drag - f_rr
+        # Apply scrub explicitly to the net longitudinal force
+        f_net = f_traction - f_drag - f_rr - f_scrub_directed
         t_net = t_drive - t_brake - t_traction - t_drag_wheel
         a = f_net / max(self.M, 1e-6)
         alpha = t_net / max(i_eff, 1e-6)
@@ -465,8 +473,8 @@ def create_longitudinal_engine(engine_id=None):
     return Long5Engine()
 
 
-def update_longitudinal_speed(engine, dt, throttle, brake):
+def update_longitudinal_speed(engine, dt, throttle, brake, f_scrub=0.0):
     """Advance the active longitudinal engine and return vehicle speed."""
     if engine is None:
         return 0.0
-    return float(engine.update(dt, throttle, brake))
+    return float(engine.update(dt, throttle, brake, f_scrub=f_scrub))

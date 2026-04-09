@@ -9,12 +9,39 @@ C_RR         = 13.0    # kg/s  (rolling resistance coefficient)
 C_DRAG       = 0.43    # kg/m  (aerodynamic drag coefficient)
 C_BRAKING    = 12000   # N
 
-# ── Geometry (Model 6) ────────────────────────────────────────────────────────
+# NEW MODEL 7 LATERAL CONSTANTS
+# Increased yaw inertia slightly so the car resists whipping around quite as fast
+I_Z          = 2500.0  # kg·m² (Yaw moment of inertia)
+
+# STAGGERED GRIP: Making C_AR > C_AF creates inherent "understeer" stability. 
+# Once the car spins to 180 degrees, the massive rear grip acts like a parachute, 
+# fighting the rotation and forcing the car to stabilize backward.
+C_AF         = 85000.0  # N/rad (Front cornering stiffness)
+C_AR         = 140000.0 # N/rad (Rear cornering stiffness)
+
+# MODEL 7.5 SCRUB FORCE
+SCRUB_MULTIPLIER = 7.0  
+YAW_DAMPING_MULTIPLIER = 1.75
+
+# Skid mark visibility scaling (continuous):
+# 1.0 = baseline, <1.0 = less visible/harder to trigger, >1.0 = more visible/easier to trigger
+SKID_MARK_VISIBILITY_SCALE = 0.35
+
+# Base slip thresholds for spawning skid patches.
+# Longitudinal uses wheel slip ratio (unitless), lateral uses slip angle (radians).
+SKID_MARK_LONG_SLIP_THRESHOLD = 0.08
+SKID_MARK_LAT_SLIP_THRESHOLD = 0.06
+
+# Intensity gains for converting slip above threshold into visual strength.
+SKID_MARK_LONG_GAIN = 2.6
+SKID_MARK_LAT_GAIN = 2.0
+
+# ── Geometry (Model 6 & 7) ────────────────────────────────────────────────────
 L            = 2.6     # m (Wheelbase)
 MAX_STEER    = 35.0    # degrees (Max steering angle lock-to-lock)
 
-PIXELS_PER_METER = 20    # Base scale (modified by zoom)
-GRID_SIZE        = 10.0  # m (Spacing of the skidpad gridlines)
+PIXELS_PER_METER = 20
+GRID_SIZE     = 10.0     # m (Grid spacing for rendering)
 
 # ── Colour palette ────────────────────────────────────────────────────────────
 ROAD_COLOR     = (40,  42,  45)
@@ -52,4 +79,9 @@ CONST_FIELDS = [
     ("Rolling Res.", "C_RR",         "kg/s", C_RR),
     ("Aero Drag",    "C_DRAG",       "kg/m", C_DRAG),
     ("Brake Force",  "C_BRAKING",    "N",    C_BRAKING),
+    
+    # NEW MODEL 7 UI FIELDS
+    ("Yaw Inertia",  "I_Z",          "kg.m2", I_Z),
+    ("Front C_a",    "C_AF",         "N/rad", C_AF),
+    ("Rear C_a",     "C_AR",         "N/rad", C_AR),
 ]

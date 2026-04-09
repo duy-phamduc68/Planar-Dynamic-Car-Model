@@ -97,16 +97,32 @@ def draw_car_topdown(surface, car, cx, cy, zoom, sw, sh, true_form):
         fdx, fdy = math.cos(fh) * w_len, -math.sin(fh) * w_len
         pygame.draw.line(surface, (50, 255, 50), (fsx - fdx, fsy - fdy), (fsx + fdx, fsy + fdy), 6)
         
-        # 3. ICR (Instantaneous Center of Rotation)
-        if abs(car.steering_angle) > 0.01:
-            R_rear = car.L / math.tan(car.steering_angle)
-            icr_x = rear_x - R_rear * math.sin(car.heading)
-            icr_y = rear_y + R_rear * math.cos(car.heading)
-            icrx_s, icry_s = _transform(icr_x, icr_y, cx, cy, zoom, sw, sh)
-            
-            pygame.draw.line(surface, (100, 100, 100), (rsx, rsy), (icrx_s, icry_s), 1)
-            pygame.draw.line(surface, (100, 100, 100), (fsx, fsy), (icrx_s, icry_s), 1)
-            pygame.draw.circle(surface, (255, 255, 0), (int(icrx_s), int(icry_s)), 5)
+        # 3. Model 7 Vectors: Velocity (Sideslip) and Lateral Forces
+        # Draw actual velocity vector (blue) from CG
+        cg_x = rear_x + (car.L * 0.5) * math.cos(car.heading)
+        cg_y = rear_y + (car.L * 0.5) * math.sin(car.heading)
+        cgs_x, cgs_y = _transform(cg_x, cg_y, cx, cy, zoom, sw, sh)
+        
+        travel_angle = car.heading + car.beta
+        v_len = car.v * 0.2 * ppm # Scale velocity for visuals
+        vx_px, vy_px = math.cos(travel_angle) * v_len, -math.sin(travel_angle) * v_len
+        if car.v > 0.5:
+            pygame.draw.line(surface, (50, 150, 255), (cgs_x, cgs_y), (cgs_x + vx_px, cgs_y + vy_px), 4)
+
+        # Draw lateral force vectors (pink/orange)
+        f_scale = 0.0005 * ppm
+        
+        # Front force (perpendicular to front wheel)
+        f_yf = getattr(car, 'last_f_yf', 0.0)
+        ff_angle = fh + math.pi/2
+        ffx, ffy = math.cos(ff_angle) * f_yf * f_scale, -math.sin(ff_angle) * f_yf * f_scale
+        pygame.draw.line(surface, (200, 50, 150), (fsx, fsy), (fsx + ffx, fsy + ffy), 3)
+
+        # Rear force (perpendicular to rear wheel/chassis)
+        f_yr = getattr(car, 'last_f_yr', 0.0)
+        fr_angle = car.heading + math.pi/2
+        frx, fry = math.cos(fr_angle) * f_yr * f_scale, -math.sin(fr_angle) * f_yr * f_scale
+        pygame.draw.line(surface, (230, 110, 80), (rsx, rsy), (rsx + frx, rsy + fry), 3)
             
     else:
         # Standard Chassis Box with symmetric wheel placement and slight front bias
@@ -195,24 +211,28 @@ def draw_hud_planar(surface, rect, font_sm, font_lg, car, throttle, brake, steer
             return f"{txt} {unit}"
         return txt
 
+    # MODEL 7 HUD UPDATES
+    beta_deg = math.degrees(hud.get("beta", 0.0))
+    alpha_f_deg = math.degrees(hud.get("alpha_f", 0.0))
+    alpha_r_deg = math.degrees(hud.get("alpha_r", 0.0))
+
     left_lines = [
         ("Velocity", f"{car.v:.2f} m/s"),
-        ("Position", f"X {car.x:.2f}  Y {car.y:.2f}"),
+        ("Sideslip (B)", f"{beta_deg:+.2f} deg"),
         ("Heading", f"{math.degrees(car.heading)%360:.1f} deg"),
-        ("Yaw Rate", f"{car.yaw_rate:.3f} rad/s"),
-        ("Long. Accel", _fmt_or_na(hud.get("ax"), "m/s^2")),
+        ("Yaw Rate (r)", f"{car.yaw_rate:.3f} rad/s"),
         ("F Traction", _fmt_or_na(hud.get("f_traction"), "N")),
         ("F Drag", _fmt_or_na(hud.get("f_drag"), "N")),
         ("F RR", _fmt_or_na(hud.get("f_rr"), "N")),
     ]
 
     right_lines = [
-        ("Net Force", _fmt_or_na(hud.get("f_net"), "N")),
+        ("Alpha Front", f"{alpha_f_deg:+.2f} deg"),
+        ("Alpha Rear", f"{alpha_r_deg:+.2f} deg"),
+        ("F Lat Front", _fmt_float_or_na(hud.get("f_yf"), 0, "N")),
+        ("F Lat Rear", _fmt_float_or_na(hud.get("f_yr"), 0, "N")),
         ("Slip Ratio", _fmt_or_na(hud.get("slip_ratio"))),
         ("Wheel w", _fmt_float_or_na(hud.get("wheel_omega"), 2, "rad/s")),
-        ("Wheel a", _fmt_or_na(hud.get("wheel_alpha"), "rad/s^2")),
-        ("T Drive", _fmt_or_na(hud.get("t_drive"), "Nm")),
-        ("T Brake", _fmt_or_na(hud.get("t_brake"), "Nm")),
         ("Gear", _fmt_or_na(hud.get("gear"))),
         ("RPM", _fmt_or_na(hud.get("rpm"))),
     ]

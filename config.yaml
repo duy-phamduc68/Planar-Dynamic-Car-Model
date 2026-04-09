@@ -1,6 +1,6 @@
 # Recommended config: 0.01 timestep, 120 fps
 
-# 0.001 ; 0.01 ; 0.16
+# 0.001 ; 0.01 ; 0.016
 timestep: 0.001
 
 # 60 ; 120 ; 144
@@ -12,12 +12,11 @@ true_form: false
 # true ; false
 auto_shift: true
 
-# fixed: 5 (Long.5)
-# legacy keys are kept for backward compatibility, but runtime always uses Long.5
-longitudinal_engine: 5
-
 # true ; false
 inverse_steering: true
+
+# Model 7.5 Lateral Scrub (true = dampens drifting, false = raw Model 7 ice physics)
+enable_scrub_force: true
 
 # runtime options:
 kb_throttle_ramp_engage: 0.5
@@ -29,7 +28,7 @@ kb_brake_ramp_release: 0.2
 kb_steer_ramp_engage: 0.5
 kb_steer_ramp_release: 0.1
 
-# constants preset (most are adapted to use Longitudinal Engine 5):
+# constants preset:
 # "DEFAULT"
 # "ECONOMY_COMPACT"
 # "SPORTS_CAR"
@@ -38,6 +37,6 @@ kb_steer_ramp_release: 0.1
 # "ELECTRIC_EV"
 # "GO_KART"
 # "LIMOUSINE"
-# "MCLAREN_P1" (roughly estimated from public sources, very different from the others
+# "MCLAREN_P1" (roughly estimated from public sources, very different from the others)
 # McLaren P1 is added to validate a mathematical modeling paper of mine)
-preset: "DEFAULT"
+preset: "TURBO_PERFORMANCE"

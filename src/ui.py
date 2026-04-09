@@ -73,13 +73,29 @@ def _valid_gear_ratios(text):
     pairs = [p.strip() for p in text.split(",") if p.strip()]
     if not pairs:
         return False
+    has_forward_gear = False
     for pair in pairs:
         if ":" not in pair:
             return False
         g, r = pair.split(":", 1)
         gi = _parse_float(g)
         rr = _parse_float(r)
-        if gi is None or rr is None or gi <= 0 or rr <= 0:
+        if gi is None or rr is None:
+            return False
+        if abs(gi - int(gi)) > 1e-9:
+            return False
+        gear = int(gi)
+        if gear > 0:
+            has_forward_gear = True
+            if rr <= 0:
+                return False
+        elif gear == 0:
+            if abs(rr) > 1e-9:
+                return False
+        else:
+            if rr <= 0:
+                return False
+    if not has_forward_gear:
             return False
     return True
 
@@ -90,14 +106,20 @@ def _valid_torque_curve(text):
     pts = [p.strip() for p in text.split(",") if p.strip()]
     if not pts:
         return False
+    prev_rpm = None
     for pt in pts:
         if ":" not in pt:
             return False
         rpm, tq = pt.split(":", 1)
         rv = _parse_float(rpm)
         tv = _parse_float(tq)
-        if rv is None or tv is None or rv <= 0 or tv <= 0:
+        if rv is None or tv is None:
             return False
+        if rv < 0 or tv < 0:
+            return False
+        if prev_rpm is not None and rv < prev_rpm:
+            return False
+        prev_rpm = rv
     return True
 
 
@@ -395,25 +417,129 @@ class OptionsMenu:
                 "apply_attr": "kb_steer_ramp_release",
                 "is_dummy": False,
             },
+            {
+                "key": "tune:enable_scrub_force",
+                "label": "Model 7.5 Scrub",
+                "unit": "",
+                "section": "Runtime Tuning",
+                "type": "bool",
+                "default": getattr(self.sim, "enable_scrub_force", True),
+                "lo": None,
+                "hi": None,
+                "apply_attr": "enable_scrub_force",
+                "is_dummy": False,
+            },
+            {
+                "key": "tune:scrub_multiplier",
+                "label": "Scrub Multiplier",
+                "unit": "",
+                "section": "Runtime Tuning",
+                "type": "float",
+                "default": getattr(self.sim, "scrub_multiplier", 7.0),
+                "lo": 0.0,
+                "hi": 30.0,
+                "apply_attr": "scrub_multiplier",
+                "is_dummy": False,
+            },
+            {
+                "key": "tune:yaw_damping_multiplier",
+                "label": "Yaw Damping Multiplier",
+                "unit": "",
+                "section": "Runtime Tuning",
+                "type": "float",
+                "default": getattr(self.sim, "yaw_damping_multiplier", 1.75),
+                "lo": 0.0,
+                "hi": 10.0,
+                "apply_attr": "yaw_damping_multiplier",
+                "is_dummy": False,
+            },
+            {
+                "key": "tune:skid_mark_visibility_scale",
+                "label": "Skid Visibility Scale",
+                "unit": "",
+                "section": "Runtime Tuning",
+                "type": "float",
+                "default": getattr(self.sim, "skid_mark_visibility_scale", 1.0),
+                "lo": 0.05,
+                "hi": 5.0,
+                "apply_attr": "skid_mark_visibility_scale",
+                "is_dummy": False,
+            },
+            {
+                "key": "tune:skid_mark_long_slip_threshold",
+                "label": "Skid Long Slip Threshold",
+                "unit": "",
+                "section": "Runtime Tuning",
+                "type": "float",
+                "default": getattr(self.sim, "skid_mark_long_slip_threshold", 0.08),
+                "lo": 0.0,
+                "hi": 1.0,
+                "apply_attr": "skid_mark_long_slip_threshold",
+                "is_dummy": False,
+            },
+            {
+                "key": "tune:skid_mark_lat_slip_threshold",
+                "label": "Skid Lat Slip Threshold",
+                "unit": "rad",
+                "section": "Runtime Tuning",
+                "type": "float",
+                "default": getattr(self.sim, "skid_mark_lat_slip_threshold", 0.06),
+                "lo": 0.0,
+                "hi": 0.5,
+                "apply_attr": "skid_mark_lat_slip_threshold",
+                "is_dummy": False,
+            },
+            {
+                "key": "tune:skid_mark_long_gain",
+                "label": "Skid Long Gain",
+                "unit": "",
+                "section": "Runtime Tuning",
+                "type": "float",
+                "default": getattr(self.sim, "skid_mark_long_gain", 2.6),
+                "lo": 0.1,
+                "hi": 20.0,
+                "apply_attr": "skid_mark_long_gain",
+                "is_dummy": False,
+            },
+            {
+                "key": "tune:skid_mark_lat_gain",
+                "label": "Skid Lat Gain",
+                "unit": "",
+                "section": "Runtime Tuning",
+                "type": "float",
+                "default": getattr(self.sim, "skid_mark_lat_gain", 2.0),
+                "lo": 0.1,
+                "hi": 20.0,
+                "apply_attr": "skid_mark_lat_gain",
+                "is_dummy": False,
+            },
         ]
         for spec in self._tune_fields:
             self._field_specs[spec["key"]] = spec
             self._field_texts[spec["key"]] = _fmt_const(getattr(self.sim, spec["apply_attr"], spec["default"]))
 
     def _infer_limits(self, attr, default):
-        if attr == "L":
-            return 1.0, 6.0
-        if attr == "M":
-            return 300.0, 8000.0
-        if attr in ("F_ENGINE_MAX", "C_BRAKING"):
-            return 100.0, 50000.0
-        if attr == "C_RR":
-            return 0.1, 500.0
-        if attr == "C_DRAG":
-            return 0.01, 5.0
-        lo = 0.000001
-        hi = max(float(default) * 10.0, 1.0)
-        return lo, hi
+            if attr == "L":
+                return 1.0, 6.0
+            if attr == "M":
+                return 300.0, 8000.0
+            if attr in ("F_ENGINE_MAX", "C_BRAKING"):
+                return 100.0, 50000.0
+            if attr == "C_RR":
+                return 0.1, 500.0
+            if attr == "C_DRAG":
+                return 0.01, 5.0
+
+            # --- NEW LIMITS FOR MODEL 7 ---
+            if attr == "I_Z":
+                return 500.0, 10000.0  # Keep it realistic for a car chassis
+            if attr in ("C_AF", "C_AR"):
+                return 5000.0, 200000.0 # From driving on ice to driving on rails
+            # ------------------------------
+
+            lo = 0.000001
+            hi = max(float(default) * 10.0, 1.0)
+            return lo, hi
 
     def _sync_real_constant_texts(self):
         for key, spec in self._field_specs.items():
@@ -475,6 +601,12 @@ class OptionsMenu:
                 self.sim.throttle_ramp = val
             if attr == "kb_steer_ramp_engage" and hasattr(self.sim, "steer_ramp"):
                 self.sim.steer_ramp = val
+            if attr == "enable_scrub_force" and hasattr(self.sim, "enable_scrub_force"):
+                self.sim.enable_scrub_force = val
+            if attr == "scrub_multiplier" and hasattr(self.sim.car, "SCRUB_MULTIPLIER"):
+                self.sim.car.SCRUB_MULTIPLIER = val
+            if attr == "yaw_damping_multiplier" and hasattr(self.sim.car, "YAW_DAMPING_MULTIPLIER"):
+                self.sim.car.YAW_DAMPING_MULTIPLIER = val
             return True
         return False
 
@@ -967,7 +1099,12 @@ class OptionsMenu:
                             self._field_texts[key] = _fmt_const(new_val)
                             self._apply_resettable_field(key)
                             self._const_editing = None
+                            
+                            if spec.get("apply_attr") == "enable_scrub_force":
+                                self.sim.reset_scenario()
+                            
                             return True
+                        
                         cursor = self._cursor_index_from_x(self._field_texts.get(key, ""), rect, mapped_pos[0], self.sim.font_sm)
                         self._begin_editing(key, cursor)
                         return True

@@ -13,6 +13,13 @@ from constants import (
     BRAKE_RAMP_DEFAULT,
     STEER_RAMP_DEFAULT,
     GRID_SIZE,
+    SCRUB_MULTIPLIER,
+    YAW_DAMPING_MULTIPLIER,
+    SKID_MARK_VISIBILITY_SCALE,
+    SKID_MARK_LONG_SLIP_THRESHOLD,
+    SKID_MARK_LAT_SLIP_THRESHOLD,
+    SKID_MARK_LONG_GAIN,
+    SKID_MARK_LAT_GAIN,
     TIMESTEP_OPTIONS,
     FPS_OPTIONS,
     CAR_BODY,
@@ -146,6 +153,7 @@ def _load_global_settings():
     true_form_default = False
     auto_shift_default = False
     inverse_steering_default = False
+    enable_scrub_force_default = True
     kb_throttle_ramp_engage_default = 0.5
     kb_throttle_ramp_release_default = 0.2
     kb_brake_ramp_engage_default = 0.5
@@ -160,6 +168,7 @@ def _load_global_settings():
     cfg_true_form = None
     cfg_auto_shift = None
     cfg_inverse_steering = None
+    cfg_enable_scrub_force = None
     cfg_kb_throttle_ramp_engage = None
     cfg_kb_throttle_ramp_release = None
     cfg_kb_brake_ramp_engage = None
@@ -191,9 +200,8 @@ def _load_global_settings():
                     cfg_auto_shift = _parse_bool(val)
                 elif key == "inverse_steering":
                     cfg_inverse_steering = _parse_bool(val)
-                elif key in ("longitudinal_model", "longitudinal_engine", "engine_model", "engine_id"):
-                    # Legacy keys are accepted but ignored; runtime always uses Long.5.
-                    continue
+                elif key == "enable_scrub_force":
+                    cfg_enable_scrub_force = _parse_bool(val)
                 elif key == "kb_throttle_ramp_engage":
                     cfg_kb_throttle_ramp_engage = _parse_scalar(val)
                 elif key == "kb_throttle_ramp_release":
@@ -227,6 +235,7 @@ def _load_global_settings():
     true_form = true_form_default if cfg_true_form is None else cfg_true_form
     auto_shift = auto_shift_default if cfg_auto_shift is None else cfg_auto_shift
     inverse_steering = inverse_steering_default if cfg_inverse_steering is None else cfg_inverse_steering
+    enable_scrub_force = enable_scrub_force_default if cfg_enable_scrub_force is None else cfg_enable_scrub_force
 
     def _pick_pos(parsed, default):
         if parsed is None or parsed <= 0:
@@ -247,6 +256,7 @@ def _load_global_settings():
         true_form,
         auto_shift,
         inverse_steering,
+        enable_scrub_force,
         kb_throttle_ramp_engage,
         kb_throttle_ramp_release,
         kb_brake_ramp_engage,
@@ -261,7 +271,7 @@ class Simulator:
         if os.name == "nt":
             os.environ.setdefault("SDL_HINT_FORCE_RAISEWINDOW", "1")
         pygame.init()
-        pygame.display.set_caption("Car Physics Simulator - Model 6: Kinematics Turning with Long.5")
+        pygame.display.set_caption("Car Physics Simulator - Planar Dynamics Car Models")
         self.screen = pygame.display.set_mode((1280, 720), pygame.RESIZABLE)
         _focus_window_on_startup()
         self.screen_w, self.screen_h = self.screen.get_size()
@@ -276,6 +286,7 @@ class Simulator:
             cfg_true_form,
             cfg_auto_shift,
             cfg_inverse_steering,
+            cfg_enable_scrub_force,
             cfg_kb_throttle_ramp_engage,
             cfg_kb_throttle_ramp_release,
             cfg_kb_brake_ramp_engage,
@@ -292,6 +303,14 @@ class Simulator:
         self.kb_brake_ramp_release = cfg_kb_brake_ramp_release
         self.kb_steer_ramp_engage = cfg_kb_steer_ramp_engage
         self.kb_steer_ramp_release = cfg_kb_steer_ramp_release
+        self.enable_scrub_force = bool(cfg_enable_scrub_force)
+        self.scrub_multiplier = float(SCRUB_MULTIPLIER)
+        self.yaw_damping_multiplier = float(YAW_DAMPING_MULTIPLIER)
+        self.skid_mark_visibility_scale = float(SKID_MARK_VISIBILITY_SCALE)
+        self.skid_mark_long_slip_threshold = float(SKID_MARK_LONG_SLIP_THRESHOLD)
+        self.skid_mark_lat_slip_threshold = float(SKID_MARK_LAT_SLIP_THRESHOLD)
+        self.skid_mark_long_gain = float(SKID_MARK_LONG_GAIN)
+        self.skid_mark_lat_gain = float(SKID_MARK_LAT_GAIN)
 
         # Backward-compatible aliases for existing UI/runtime access.
         self.throttle_ramp = self.kb_throttle_ramp_engage
@@ -300,6 +319,8 @@ class Simulator:
         
         # Physics Wrapper
         self.car = Vehicle2D()
+        self.car.SCRUB_MULTIPLIER = self.scrub_multiplier
+        self.car.YAW_DAMPING_MULTIPLIER = self.yaw_damping_multiplier
         self.sim_time = 0.0
         self._preset_registry = _load_presets_registry()
         self.active_preset = None
@@ -326,11 +347,12 @@ class Simulator:
         # UI Elements
         self._menu_btn = pygame.Rect(8, 8, 110, 30)
         self._true_form_cb = CheckBox(130, 14, "True Form", checked=cfg_true_form)
+        self._scrub_cb = CheckBox(250, 14, "Scrub Force", checked=self.enable_scrub_force)
         self.options = OptionsMenu(self)
 
         # Apply config-selected preset after car/options initialization.
-        self._configured_preset = cfg_preset
-        self.apply_preset(cfg_preset, reset=True)
+        if not self.apply_preset(cfg_preset, reset=True):
+            self.apply_preset("DEFAULT", reset=True)
 
         self._clock = pygame.time.Clock()
         self._fps_display, self._fps_acc, self._fps_frames = 0.0, 0.0, 0
@@ -416,11 +438,8 @@ class Simulator:
         if key is None:
             return False
 
-        if key == "DEFAULT":
-            return self._apply_default_preset(reset=reset)
-
         spec = self._preset_registry.get(key)
-        if not isinstance(spec, dict):
+        if key != "DEFAULT" and not isinstance(spec, dict):
             return False
 
         # Always start from true engine defaults so any omitted preset field
@@ -439,7 +458,7 @@ class Simulator:
         has_hybrid_fade_start = False
         has_hybrid_fade_end = False
 
-        for field, value in spec.items():
+        for field, value in (spec or {}).items():
             if field == "CG_HEIGHT":
                 try:
                     cg_height = float(value)
@@ -712,8 +731,10 @@ class Simulator:
             # Top UI Overlays
             if event.type == pygame.MOUSEMOTION:
                 self._true_form_cb.handle_event(event)
+                self._scrub_cb.handle_event(event)
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and not self.options.visible:
                 if self._true_form_cb.handle_event(event): continue
+                if self._scrub_cb.handle_event(event): continue
                 if self._menu_btn.collidepoint(event.pos): self.options.toggle(); continue
 
             if self.options.handle_event(event): continue
@@ -878,47 +899,89 @@ class Simulator:
             self._drive_brake = self.brake
 
     def _update_slip_visuals(self, dt):
-        """Spawn and decay dark rear-wheel slip patches on wheelspin."""
+        """Spawn and decay dark rear-wheel slip patches on wheelspin and lateral slip."""
         engine = getattr(self.car, "engine", None)
-        is_slipping = bool(getattr(engine, "is_slipping", False))
         slip_ratio = abs(float(getattr(engine, "last_slip_ratio", 0.0))) if engine is not None else 0.0
+        vis_scale = max(0.05, float(getattr(self, "skid_mark_visibility_scale", SKID_MARK_VISIBILITY_SCALE)))
+        long_slip_threshold = max(1e-6, float(getattr(self, "skid_mark_long_slip_threshold", SKID_MARK_LONG_SLIP_THRESHOLD))) / vis_scale
+        long_gain = float(getattr(self, "skid_mark_long_gain", SKID_MARK_LONG_GAIN))
+        long_slip_intensity = max(0.0, (slip_ratio - long_slip_threshold) * (long_gain * vis_scale))
+        is_long_slipping = long_slip_intensity > 0.0
+        
+        # Model 7: Introduce lateral slip detection
+        alpha_f = abs(getattr(self.car, "last_alpha_f", 0.0))
+        alpha_r = abs(getattr(self.car, "last_alpha_r", 0.0))
+        
+        # Determine if we are slipping laterally (baseline threshold ~ 6 degrees / 0.1 rad)
+        lat_slip_threshold = max(1e-6, float(getattr(self, "skid_mark_lat_slip_threshold", SKID_MARK_LAT_SLIP_THRESHOLD))) / vis_scale
+        lat_gain = float(getattr(self, "skid_mark_lat_gain", SKID_MARK_LAT_GAIN))
+        lat_slip_intensity_r = max(0.0, (alpha_r - lat_slip_threshold) * (lat_gain * vis_scale))
+        lat_slip_intensity_f = max(0.0, (alpha_f - lat_slip_threshold) * (lat_gain * vis_scale))
+        
+        is_lat_slipping_r = lat_slip_intensity_r > 0.0
+        is_lat_slipping_f = lat_slip_intensity_f > 0.0
+
         speed = abs(self.car.v)
 
-        if is_slipping:
-            intensity = max(0.0, min(1.0, slip_ratio))
+        if is_long_slipping or is_lat_slipping_r or is_lat_slipping_f:
             half_track = 0.78
             lat_x = -math.sin(self.car.heading)
             lat_y = math.cos(self.car.heading)
-            rear_x = self.car.x
-            rear_y = self.car.y
+            
+            # Rear Axle Patches (Longitudinal OR Lateral)
+            if is_long_slipping or is_lat_slipping_r:
+                intensity_r = max(min(1.0, long_slip_intensity), min(1.0, lat_slip_intensity_r))
+                rear_x = self.car.x
+                rear_y = self.car.y
+                
+                for sign in (-1.0, 1.0):
+                    wx = rear_x + sign * half_track * lat_x
+                    wy = rear_y + sign * half_track * lat_y
+                    jitter = 0.05 + 0.03 * intensity_r
+                    self._slip_patches.append(
+                        {
+                            "x": wx + sign * lat_x * jitter,
+                            "y": wy + sign * lat_y * jitter,
+                            "radius_m": 0.06 + 0.16 * intensity_r,
+                            "alpha": 105.0 + 110.0 * intensity_r,
+                            "darkness": 20,
+                            "decay": 32.0 + 42.0 * intensity_r,
+                        }
+                    )
 
-            for sign in (-1.0, 1.0):
-                wx = rear_x + sign * half_track * lat_x
-                wy = rear_y + sign * half_track * lat_y
-                jitter = 0.05 + 0.03 * intensity
-                self._slip_patches.append(
-                    {
-                        "x": wx + sign * lat_x * jitter,
-                        "y": wy + sign * lat_y * jitter,
-                        "radius_m": 0.06 + 0.16 * intensity,
-                        "alpha": 105.0 + 110.0 * intensity,
-                        "darkness": 20,
-                        "decay": 32.0 + 42.0 * intensity,
-                    }
-                )
-
-            # Extra central smear at low-speed wheelspin to emulate burnouts.
-            if speed < 1.5:
-                self._slip_patches.append(
-                    {
-                        "x": rear_x,
-                        "y": rear_y,
-                        "radius_m": 0.08 + 0.10 * intensity,
-                        "alpha": 70.0 + 90.0 * intensity,
-                        "darkness": 24,
-                        "decay": 30.0 + 28.0 * intensity,
-                    }
-                )
+                # Extra central smear for burnouts
+                if is_long_slipping and speed < 1.5:
+                    self._slip_patches.append(
+                        {
+                            "x": rear_x,
+                            "y": rear_y,
+                            "radius_m": 0.08 + 0.10 * intensity_r,
+                            "alpha": 70.0 + 90.0 * intensity_r,
+                            "darkness": 24,
+                            "decay": 30.0 + 28.0 * intensity_r,
+                        }
+                    )
+            
+            # Front Axle Patches (Understeer)
+            if is_lat_slipping_f:
+                intensity_f = min(1.0, lat_slip_intensity_f)
+                front_x = self.car.x + self.car.L * math.cos(self.car.heading)
+                front_y = self.car.y + self.car.L * math.sin(self.car.heading)
+                
+                for sign in (-1.0, 1.0):
+                    wx = front_x + sign * half_track * lat_x
+                    wy = front_y + sign * half_track * lat_y
+                    jitter = 0.05 + 0.03 * intensity_f
+                    self._slip_patches.append(
+                        {
+                            "x": wx + sign * lat_x * jitter,
+                            "y": wy + sign * lat_y * jitter,
+                            "radius_m": 0.05 + 0.12 * intensity_f,
+                            "alpha": 80.0 + 100.0 * intensity_f,
+                            "darkness": 35, # Lighter marks for front scrub
+                            "decay": 40.0 + 50.0 * intensity_f,
+                        }
+                    )
 
         if self._slip_patches:
             for patch in self._slip_patches:
@@ -947,7 +1010,8 @@ class Simulator:
             if not self.options.visible:
                 accumulator += frame_dt
                 while accumulator >= self.dt:
-                    self.car.update(self.dt, self._drive_throttle, self._drive_brake, self.steering)
+                    self.enable_scrub_force = self._scrub_cb.checked
+                    self.car.update(self.dt, self._drive_throttle, self._drive_brake, self.steering, enable_scrub=self.enable_scrub_force)
                     self._update_slip_visuals(self.dt)
                     self.sim_time += self.dt
                     accumulator -= self.dt
@@ -994,6 +1058,7 @@ class Simulator:
             self.screen.blit(self.font_sm.render("Options", True, (230, 235, 255)), (25, 15))
             # Checkboxes
             self._true_form_cb.draw(self.screen, self.font_sm)
+            self._scrub_cb.draw(self.screen, self.font_sm)
             # Top-Right Text
             input_src = "Pad" if self.input_mode == "controller" else "KB"
             hud = self.car.get_hud_data()

@@ -2,11 +2,13 @@
 # physics.py — Vehicle2D wrapper with split longitudinal/lateral dynamics
 # ─────────────────────────────────────────────────────────────────────────────
 
-from constants import L, CAR_BODY
+from constants import L, CAR_BODY, I_Z, C_AF, C_AR
 from lateral_dynamics import (
     compute_steering_angle,
-    compute_yaw_rate,
-    integrate_heading,
+    compute_slip_angles,
+    compute_lateral_forces,
+    compute_lateral_derivatives,
+    integrate_state,
     world_velocity_from_heading,
     integrate_position,
 )
@@ -19,20 +21,31 @@ from longitudinal_dynamics import (
 
 
 class Vehicle2D:
-    """2D kinematic bicycle model wrapper with Long.5 longitudinal dynamics."""
+    """2D dynamic bicycle model wrapper with Long.5 longitudinal dynamics."""
     def __init__(self, engine_id=LONG5_ENGINE_ID):
         self.x = 0.0
         self.y = 0.0
         self.heading = 0.0        # radians (0 = facing East/Right)
         self.steering_angle = 0.0 # radians (relative to chassis)
-        self.yaw_rate = 0.0
+        self.yaw_rate = 0.0       # r: radians/second
+        self.beta = 0.0           # sideslip angle: radians
         self.chassis_color = tuple(CAR_BODY)
         
+        # Base lateral constants
         self.L = L
+        self.I_Z = I_Z
+        self.C_AF = C_AF
+        self.C_AR = C_AR
 
         self.engine_id = LONG5_ENGINE_ID
         self.engine = None
         self.set_engine(engine_id, preserve_speed=False)
+
+        # Telemetry for the renderer
+        self.last_alpha_f = 0.0
+        self.last_alpha_r = 0.0
+        self.last_f_yf = 0.0
+        self.last_f_yr = 0.0
 
     def _sync_vehicle_from_engine(self):
         if hasattr(self.engine, "L"):
@@ -59,35 +72,98 @@ class Vehicle2D:
         self._sync_vehicle_from_engine()
 
     def get_hud_data(self):
+        hud = {}
         if hasattr(self.engine, "get_hud_data"):
-            return self.engine.get_hud_data()
-        return {
-            "mode_label": LONG5_ENGINE_LABEL,
-            "gear": "N/A",
-            "rpm": "N/A",
-            "shift": "AUTO",
-            "slip": "N/A",
-            "traction": "N/A",
-            "placeholder": True,
-        }
+            hud = self.engine.get_hud_data()
+        
+        # Inject lateral telemetry into HUD data
+        hud.update({
+            "beta": self.beta,
+            "yaw_rate": self.yaw_rate,
+            "alpha_f": self.last_alpha_f,
+            "alpha_r": self.last_alpha_r,
+            "f_yf": self.last_f_yf,
+            "f_yr": self.last_f_yr,
+        })
+        return hud
         
     def reset(self):
         self.x, self.y, self.heading = 0.0, 0.0, 0.0
+        self.yaw_rate = 0.0
+        self.beta = 0.0
+        self.last_alpha_f = 0.0
+        self.last_alpha_r = 0.0
+        self.last_f_yf = 0.0
+        self.last_f_yr = 0.0
         self.engine.reset()
 
     @property
     def v(self): return self.engine.v
 
-    def update(self, dt, throttle, brake, steering_input):
-        # Longitudinal channel (speed update).
-        v = update_longitudinal_speed(self.engine, dt, throttle, brake)
+    def update(self, dt, throttle, brake, steering_input, enable_scrub=True):
+        
+        # --- NEW: CALCULATE MODEL 7.5 SCRUB ---
+        f_scrub_mag = 0.0
+        if enable_scrub:
+            import math
+            f_lat_total = abs(self.last_f_yf) + abs(self.last_f_yr)
+            # F_scrub = F_lat * sin(beta) * multiplier
+            scrub_multiplier = getattr(self, 'SCRUB_MULTIPLIER', 2.5)
+            f_scrub_mag = f_lat_total * abs(math.sin(self.beta)) * scrub_multiplier
 
-        # Lateral/planar channel (bicycle yaw + pose integration).
+        # 1. Longitudinal channel (speed update) - Pass scrub!
+        v = update_longitudinal_speed(self.engine, dt, throttle, brake, f_scrub=f_scrub_mag)
+
+        # 2. Get lever arms from the engine's CG geometry mapping
+        b = getattr(self.engine, 'b', self.L * 0.5)
+        c = getattr(self.engine, 'c', self.L * 0.5)
+
+        # 3. Lateral/planar channel (Model 7 Dynamics)
         self.steering_angle = compute_steering_angle(steering_input)
-        self.yaw_rate = compute_yaw_rate(v, self.steering_angle, self.L)
-        self.heading = integrate_heading(self.heading, self.yaw_rate, dt)
-        vx, vy = world_velocity_from_heading(v, self.heading)
+        
+        # Compute slip angles
+        alpha_f, alpha_r = compute_slip_angles(
+            self.steering_angle, self.beta, self.yaw_rate, v, b, c
+        )
+        
+        # Grab dynamic load from the engine
+        Wf = getattr(self.engine, 'Wf', self.M * 9.81 * 0.5)
+        Wr = getattr(self.engine, 'Wr', self.M * 9.81 * 0.5)
+        mu = getattr(self.engine, 'MU', 1.0)
+        
+        max_grip_f = mu * Wf
+        max_grip_r = mu * Wr
+
+        # Compute lateral forces
+        f_yf, f_yr = compute_lateral_forces(
+            alpha_f, alpha_r, self.C_AF, self.C_AR, max_grip_f, max_grip_r
+        )
+        
+        # Compute ODE derivatives
+        d_r, d_beta = compute_lateral_derivatives(
+            f_yf, f_yr, self.yaw_rate, v, b, c, self.M, self.I_Z
+        )
+        
+        # --- NEW: ROTATIONAL SCRUB (Yaw Damping) ---
+        if enable_scrub:
+            # The tires resisting being twisted across the asphalt
+            d_r -= self.yaw_rate * getattr(self, 'YAW_DAMPING_MULTIPLIER', 1.75)
+        # -------------------------------------------
+        
+        # 4. Integrate states (Euler)
+        self.yaw_rate = integrate_state(self.yaw_rate, d_r, dt)
+        self.beta = integrate_state(self.beta, d_beta, dt)
+        self.heading = integrate_state(self.heading, self.yaw_rate, dt)
+        
+        # 5. Position integration with sideslip
+        vx, vy = world_velocity_from_heading(v, self.heading, self.beta)
         self.x, self.y = integrate_position(self.x, self.y, vx, vy, dt)
+
+        # Save telemetry
+        self.last_alpha_f = alpha_f
+        self.last_alpha_r = alpha_r
+        self.last_f_yf = f_yf
+        self.last_f_yr = f_yr
 
         # Keep attributes in sync for options menu overrides
         self._sync_engine_from_vehicle()
