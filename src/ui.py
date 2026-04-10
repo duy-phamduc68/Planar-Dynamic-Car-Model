@@ -876,6 +876,7 @@ class OptionsMenu:
             "preset_buttons": [],
             "preset_label_pos": None,
             "field_rects": {},
+            "grid_reset_btn": None,
             "reset_btn": None,
             "close_btn": None,
         }
@@ -960,8 +961,13 @@ class OptionsMenu:
             self._ui["section_bodies"][sec_name] = {"rect": pygame.Rect(12, body_top, pw - 24, y - body_top)}
             y += sec_gap
 
-        self._ui["reset_btn"] = Button(pygame.Rect((pw // 2) - 220, y + 6, 210, row + 2), "Apply + Reset")
-        self._ui["close_btn"] = Button(pygame.Rect((pw // 2) + 10, y + 6, 210, row + 2), "Close")
+        btn_w = 180
+        btn_gap = 12
+        total_w = (btn_w * 3) + (btn_gap * 2)
+        start_x = (pw - total_w) // 2
+        self._ui["grid_reset_btn"] = Button(pygame.Rect(start_x, y + 6, btn_w, row + 2), "Reset Grid Tiles")
+        self._ui["reset_btn"] = Button(pygame.Rect(start_x + btn_w + btn_gap, y + 6, btn_w, row + 2), "Apply + Reset")
+        self._ui["close_btn"] = Button(pygame.Rect(start_x + (btn_w + btn_gap) * 2, y + 6, btn_w, row + 2), "Close")
 
         y += row + 24
 
@@ -1049,6 +1055,11 @@ class OptionsMenu:
                 self.sim.reset_scenario()
 
             self._recompute_const_dirty()
+            return True
+
+        if self._ui["grid_reset_btn"].handle_event(event, mapped_pos):
+            if hasattr(self.sim, "reset_grid_tiles"):
+                self.sim.reset_grid_tiles()
             return True
 
         if self._ui["close_btn"].handle_event(event, mapped_pos):
@@ -1272,6 +1283,7 @@ class OptionsMenu:
                 caret_x = rect.x + 8 + font_sm.size((txt or "")[: self._cursor_pos])[0]
                 pygame.draw.line(content, TEXT_BRIGHT, (caret_x, rect.y + 6), (caret_x, rect.y + rect.height - 6), 1)
 
+        self._ui["grid_reset_btn"].draw(content, font_sm)
         self._ui["reset_btn"].draw(content, font_md)
         self._ui["close_btn"].draw(content, font_sm)
 

@@ -38,5 +38,4 @@ kb_steer_ramp_release: 0.1
 # "GO_KART"
 # "LIMOUSINE"
 # "MCLAREN_P1" (roughly estimated from public sources, very different from the others)
-# McLaren P1 is added to validate a mathematical modeling paper of mine)
 preset: "DEFAULT"

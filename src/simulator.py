@@ -273,7 +273,7 @@ class Simulator:
         if os.name == "nt":
             os.environ.setdefault("SDL_HINT_FORCE_RAISEWINDOW", "1")
         pygame.init()
-        pygame.display.set_caption("Car Physics Simulator - Planar Dynamics Car Models")
+        pygame.display.set_caption("Car Physics Simulator - Planar Dynamic Car Model with Scrub Force")
         self._windowed_size = (1280, 720)
         self._is_fullscreen = False
         self.screen = pygame.display.set_mode(self._windowed_size, pygame.RESIZABLE)
@@ -662,6 +662,11 @@ class Simulator:
         self._timer_elapsed = 0.0
         self._timer_start_t = 0.0
 
+    def reset_grid_tiles(self):
+        self._toggled_grid_tiles.clear()
+        self._grid_paint_active = False
+        self._grid_paint_last_tile = None
+
     def _apply_auto_shift_mode(self):
         if hasattr(self.car.engine, "enable_auto_shift"):
             self.car.engine.enable_auto_shift = bool(self.enable_auto_shift)
@@ -1019,11 +1024,10 @@ class Simulator:
                 for sign in (-1.0, 1.0):
                     wx = rear_x + sign * half_track * lat_x
                     wy = rear_y + sign * half_track * lat_y
-                    jitter = 0.05 + 0.03 * intensity_r
                     self._slip_patches.append(
                         {
-                            "x": wx + sign * lat_x * jitter,
-                            "y": wy + sign * lat_y * jitter,
+                            "x": wx,
+                            "y": wy,
                             "radius_m": 0.06 + 0.16 * intensity_r,
                             "alpha": 105.0 + 110.0 * intensity_r,
                             "darkness": 20,
@@ -1053,11 +1057,10 @@ class Simulator:
                 for sign in (-1.0, 1.0):
                     wx = front_x + sign * half_track * lat_x
                     wy = front_y + sign * half_track * lat_y
-                    jitter = 0.05 + 0.03 * intensity_f
                     self._slip_patches.append(
                         {
-                            "x": wx + sign * lat_x * jitter,
-                            "y": wy + sign * lat_y * jitter,
+                            "x": wx,
+                            "y": wy,
                             "radius_m": 0.05 + 0.12 * intensity_f,
                             "alpha": 80.0 + 100.0 * intensity_f,
                             "darkness": 35, # Lighter marks for front scrub
