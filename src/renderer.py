@@ -14,10 +14,30 @@ def _transform(wx, wy, cx, cy, zoom, sw, sh):
     sy = int(-(wy - cy) * ppm + sh / 2) # Y is inverted in Pygame
     return sx, sy
 
-def draw_skidpad(surface, cx, cy, zoom, sw, sh, grid_size_m):
+def draw_skidpad(surface, cx, cy, zoom, sw, sh, grid_size_m, toggled_tiles=None):
     surface.fill(ROAD_COLOR)
     ppm = PIXELS_PER_METER * zoom
     grid_px = max(1.0, grid_size_m * ppm)
+
+    if toggled_tiles:
+        tile_size_px = max(1, int(grid_size_m * ppm))
+        tile_col = tuple(min(255, c + 20) for c in ROAD_COLOR)
+        world_half_w = sw / (2.0 * ppm)
+        world_half_h = sh / (2.0 * ppm)
+        min_ix = int(math.floor((cx - world_half_w) / grid_size_m)) - 1
+        max_ix = int(math.floor((cx + world_half_w) / grid_size_m)) + 1
+        min_iy = int(math.floor((cy - world_half_h) / grid_size_m)) - 1
+        max_iy = int(math.floor((cy + world_half_h) / grid_size_m)) + 1
+
+        for ix, iy in toggled_tiles:
+            if ix < min_ix or ix > max_ix or iy < min_iy or iy > max_iy:
+                continue
+
+            x0 = ix * grid_size_m
+            y0 = iy * grid_size_m
+            sx = int((x0 - cx) * ppm + sw / 2)
+            sy = int(-((y0 + grid_size_m) - cy) * ppm + sh / 2)
+            pygame.draw.rect(surface, tile_col, (sx, sy, tile_size_px, tile_size_px))
     
     offset_x = (cx * ppm - sw/2) % grid_px
     offset_y = (-cy * ppm - sh/2) % grid_px
@@ -168,10 +188,25 @@ def draw_car_topdown(surface, car, cx, cy, zoom, sw, sh, true_form):
         pygame.draw.rect(car_surf, CAR_WHEEL, (rear_x, top_y, w_l, w_w))
         pygame.draw.rect(car_surf, CAR_WHEEL, (rear_x, bot_y, w_l, w_w))
 
+        # Rotate around dynamic-model CG (rear-axle + b) instead of geometric body center.
+        cg_from_rear_m = float(getattr(getattr(car, "engine", None), "b", wheelbase_m * 0.5))
+        cg_from_rear_m = max(0.0, min(wheelbase_m, cg_from_rear_m))
+
+        cg_factor = cg_from_rear_m / wheelbase_m
+        cg_sx = rsx + (fsx - rsx) * cg_factor
+        cg_sy = rsy + (fsy - rsy) * cg_factor
+
+        m_to_px = body_l / max(1e-6, body_len_m)
+        cg_local_x = (rear_overhang_m + cg_from_rear_m) * m_to_px
+        cg_local_y = body_w * 0.5
+
+        local_center = pygame.math.Vector2(body_l * 0.5, body_w * 0.5)
+        local_cg = pygame.math.Vector2(cg_local_x, cg_local_y)
+        local_offset = local_cg - local_center
+
         rotated_car = pygame.transform.rotate(car_surf, math.degrees(car.heading))
-        center_from_rear_m = (body_len_m * 0.5) - rear_overhang_m
-        center_factor = center_from_rear_m / wheelbase_m
-        r_rect = rotated_car.get_rect(center=(rsx + (fsx-rsx)*center_factor, rsy + (fsy-rsy)*center_factor))
+        rotated_offset = local_offset.rotate(math.degrees(car.heading))
+        r_rect = rotated_car.get_rect(center=(cg_sx - rotated_offset.x, cg_sy - rotated_offset.y))
         surface.blit(rotated_car, r_rect)
 
 def draw_hud_planar(surface, rect, font_sm, font_lg, car, throttle, brake, steering, fps, sim_t):

@@ -7,7 +7,7 @@ M            = 1500    # kg
 F_ENGINE_MAX = 3000    # N
 C_RR         = 13.0    # kg/s  (rolling resistance coefficient)
 C_DRAG       = 0.43    # kg/m  (aerodynamic drag coefficient)
-C_BRAKING    = 12000   # N
+C_BRAKING    = 20000   # N
 
 # NEW MODEL 7 LATERAL CONSTANTS
 # Increased yaw inertia slightly so the car resists whipping around quite as fast
@@ -21,7 +21,7 @@ C_AR         = 140000.0 # N/rad (Rear cornering stiffness)
 
 # MODEL 7.5 SCRUB FORCE
 SCRUB_MULTIPLIER = 7.0  
-YAW_DAMPING_MULTIPLIER = 1.75
+YAW_DAMPING_MULTIPLIER = 2.0
 
 # Skid mark visibility scaling (continuous):
 # 1.0 = baseline, <1.0 = less visible/harder to trigger, >1.0 = more visible/easier to trigger

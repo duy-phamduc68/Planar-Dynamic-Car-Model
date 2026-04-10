@@ -23,6 +23,7 @@ from constants import (
     TIMESTEP_OPTIONS,
     FPS_OPTIONS,
     CAR_BODY,
+    PIXELS_PER_METER,
 )
 from physics import Vehicle2D
 from controls import (
@@ -37,6 +38,7 @@ from controls import (
     XINPUT_BUTTON_A,
     XINPUT_BUTTON_B,
     XINPUT_BUTTON_X,
+    XINPUT_BUTTON_RIGHT_THUMB,
     XINPUT_BUTTON_LEFT_SHOULDER,
     XINPUT_BUTTON_RIGHT_SHOULDER,
 )
@@ -272,7 +274,9 @@ class Simulator:
             os.environ.setdefault("SDL_HINT_FORCE_RAISEWINDOW", "1")
         pygame.init()
         pygame.display.set_caption("Car Physics Simulator - Planar Dynamics Car Models")
-        self.screen = pygame.display.set_mode((1280, 720), pygame.RESIZABLE)
+        self._windowed_size = (1280, 720)
+        self._is_fullscreen = False
+        self.screen = pygame.display.set_mode(self._windowed_size, pygame.RESIZABLE)
         _focus_window_on_startup()
         self.screen_w, self.screen_h = self.screen.get_size()
 
@@ -335,6 +339,10 @@ class Simulator:
 
         # World-space rear-wheel slip visuals.
         self._slip_patches = []
+        self._toggled_grid_tiles = set()
+        self._grid_paint_active = False
+        self._grid_paint_value = True
+        self._grid_paint_last_tile = None
 
         # Input state
         self._xinput_ok = load_xinput()
@@ -598,8 +606,54 @@ class Simulator:
         self.scene_rect = pygame.Rect(0, 0, self.screen_w, int(self.screen_h * 0.75))
         self.hud_rect = pygame.Rect(0, self.scene_rect.height, self.screen_w, self.screen_h - self.scene_rect.height)
 
+    def _snap_spawn_to_tile_center(self):
+        grid = max(1e-6, float(self.grid_size))
+        # Keep default spawn tile at world-origin tile, but centered.
+        self.car.x = 0.5 * grid
+        self.car.y = 0.5 * grid
+
+    def _camera_center(self):
+        cam_x = self.car.x + 0.5 * self.car.L * math.cos(self.car.heading)
+        cam_y = self.car.y + 0.5 * self.car.L * math.sin(self.car.heading)
+        return cam_x, cam_y
+
+    def _grid_tile_from_screen(self, sx, sy):
+        if self.grid_size <= 0.0:
+            return None
+        ppm = max(1e-6, PIXELS_PER_METER * self.zoom)
+        cam_x, cam_y = self._camera_center()
+        wx = ((sx - (self.screen_w / 2.0)) / ppm) + cam_x
+        wy = -((sy - (self.scene_rect.height / 2.0)) / ppm) + cam_y
+
+        ix = int(math.floor(wx / self.grid_size))
+        iy = int(math.floor(wy / self.grid_size))
+        return (ix, iy)
+
+    def _set_grid_tile(self, key, enabled):
+        if key is None:
+            return
+        if enabled:
+            self._toggled_grid_tiles.add(key)
+        else:
+            self._toggled_grid_tiles.discard(key)
+
+    def _toggle_fullscreen(self):
+        if self._is_fullscreen:
+            self.screen = pygame.display.set_mode(self._windowed_size, pygame.RESIZABLE)
+            self._is_fullscreen = False
+        else:
+            self._windowed_size = self.screen.get_size()
+            self.screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+            self._is_fullscreen = True
+
+        self.screen_w, self.screen_h = self.screen.get_size()
+        self._layout()
+        if hasattr(self, "options") and self.options is not None:
+            self.options._build()
+
     def reset_scenario(self):
         self.car.reset()
+        self._snap_spawn_to_tile_center()
         self._apply_auto_shift_mode()
         self._drive_throttle, self._drive_brake = 0.0, 0.0
         self.sim_time, self.throttle, self.brake, self.steering = 0.0, 0.0, 0.0, 0.0
@@ -732,10 +786,33 @@ class Simulator:
             if event.type == pygame.MOUSEMOTION:
                 self._true_form_cb.handle_event(event)
                 self._scrub_cb.handle_event(event)
+                if (
+                    self._grid_paint_active
+                    and event.buttons[0]
+                    and not self.options.visible
+                    and self.scene_rect.collidepoint(event.pos)
+                ):
+                    tile = self._grid_tile_from_screen(event.pos[0], event.pos[1])
+                    if tile is not None and tile != self._grid_paint_last_tile:
+                        self._set_grid_tile(tile, self._grid_paint_value)
+                        self._grid_paint_last_tile = tile
+
+            if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                self._grid_paint_active = False
+                self._grid_paint_last_tile = None
+
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and not self.options.visible:
                 if self._true_form_cb.handle_event(event): continue
                 if self._scrub_cb.handle_event(event): continue
                 if self._menu_btn.collidepoint(event.pos): self.options.toggle(); continue
+                if self.scene_rect.collidepoint(event.pos):
+                    tile = self._grid_tile_from_screen(event.pos[0], event.pos[1])
+                    current_on = (tile in self._toggled_grid_tiles)
+                    self._grid_paint_value = not current_on
+                    self._set_grid_tile(tile, self._grid_paint_value)
+                    self._grid_paint_active = True
+                    self._grid_paint_last_tile = tile
+                    continue
 
             if self.options.handle_event(event): continue
 
@@ -763,6 +840,9 @@ class Simulator:
                 if is_down:
                     if event.key == pygame.K_1:
                         self._toggle_auto_shift()
+                        self._last_keyboard_input_t = now
+                    if event.key == pygame.K_f:
+                        self._toggle_fullscreen()
                         self._last_keyboard_input_t = now
                     if event.key == pygame.K_j:
                         self._request_shift(-1)
@@ -847,6 +927,8 @@ class Simulator:
                 self._toggle_timer()
             if (btns & XINPUT_BUTTON_DPAD_RIGHT) and not (self._btns_prev & XINPUT_BUTTON_DPAD_RIGHT):
                 self._true_form_cb.checked = not self._true_form_cb.checked
+            if (btns & XINPUT_BUTTON_RIGHT_THUMB) and not (self._btns_prev & XINPUT_BUTTON_RIGHT_THUMB):
+                self._toggle_fullscreen()
             self._btns_prev = btns
         else:
             self._btns_prev = 0
@@ -1022,10 +1104,18 @@ class Simulator:
                     self._shift_warning_msg = ""
 
             # Drawing Pipeline
-            cam_x = self.car.x + 0.5 * self.car.L * math.cos(self.car.heading)
-            cam_y = self.car.y + 0.5 * self.car.L * math.sin(self.car.heading)
+            cam_x, cam_y = self._camera_center()
 
-            draw_skidpad(self.screen, cam_x, cam_y, self.zoom, self.screen_w, self.scene_rect.height, self.grid_size)
+            draw_skidpad(
+                self.screen,
+                cam_x,
+                cam_y,
+                self.zoom,
+                self.screen_w,
+                self.scene_rect.height,
+                self.grid_size,
+                self._toggled_grid_tiles,
+            )
             draw_slip_patches(self.screen, self._slip_patches, cam_x, cam_y, self.zoom, self.screen_w, self.scene_rect.height)
             draw_car_topdown(self.screen, self.car, cam_x, cam_y, self.zoom, self.screen_w, self.scene_rect.height, self._true_form_cb.checked)
             draw_trc_slip_warning(self.screen, self.font_sm, self.sim_time, self.scene_rect.height, self.car)
@@ -1069,7 +1159,7 @@ class Simulator:
                 (230, 235, 255),
             )
             top_right_line_2 = self.font_sm.render(
-                f"Grid: {self.grid_size:.0f}m | Input: {input_src} | Long.eng: {mode_label}",
+                f"Grid: {self.grid_size:.0f}m | Input: {input_src}",
                 True,
                 (230, 235, 255),
             )
