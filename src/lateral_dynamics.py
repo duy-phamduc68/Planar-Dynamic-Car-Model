@@ -16,8 +16,7 @@ def compute_steering_angle(steering_input, max_steer_deg=MAX_STEER):
 
 
 def compute_slip_angles(delta, beta, r, v, b, c):
-    # THE PURGE: Back to 0.1 epsilon
-    v_safe = max(abs(v), 0.1) 
+    v_safe = max(abs(v), 0.1)
     
     alpha_f = delta - beta - (r * b) / v_safe
     alpha_r = -beta + (r * c) / v_safe

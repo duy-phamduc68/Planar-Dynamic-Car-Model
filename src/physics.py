@@ -120,10 +120,21 @@ class Vehicle2D:
 
         # 3. Lateral/planar channel (Model 7 Dynamics)
         self.steering_angle = compute_steering_angle(steering_input)
+
+        # Use travel direction for steering influence so reverse motion naturally
+        # inverts yaw response while wheel telemetry stays true to steering angle.
+        gear = int(getattr(self.engine, "gear", 0)) if self.engine is not None else 0
+        if abs(v) > 0.2:
+            travel_sign = 1.0 if v >= 0.0 else -1.0
+        elif gear < 0:
+            travel_sign = -1.0
+        else:
+            travel_sign = 1.0
+        dyn_steer = self.steering_angle * travel_sign
         
         # Compute slip angles
         alpha_f, alpha_r = compute_slip_angles(
-            self.steering_angle, self.beta, self.yaw_rate, v, b, c
+            dyn_steer, self.beta, self.yaw_rate, v, b, c
         )
         
         # Grab dynamic load from the engine
@@ -138,6 +149,13 @@ class Vehicle2D:
         f_yf, f_yr = compute_lateral_forces(
             alpha_f, alpha_r, self.C_AF, self.C_AR, max_grip_f, max_grip_r
         )
+
+        # Fade lateral authority in the parking-lot speed range to avoid
+        # unrealistic spin-in-place behavior at near-zero longitudinal speed.
+        lat_speed = abs(v)
+        lat_gain = min(1.0, lat_speed / 1.5)
+        f_yf *= lat_gain
+        f_yr *= lat_gain
         
         # Compute ODE derivatives
         d_r, d_beta = compute_lateral_derivatives(

@@ -218,6 +218,8 @@ def draw_hud_planar(surface, rect, font_sm, font_lg, car, throttle, brake, steer
 
     left_lines = [
         ("Velocity", f"{car.v:.2f} m/s"),
+        ("Pos X", f"{car.x:+.2f} m"),
+        ("Pos Y", f"{car.y:+.2f} m"),
         ("Sideslip (B)", f"{beta_deg:+.2f} deg"),
         ("Heading", f"{math.degrees(car.heading)%360:.1f} deg"),
         ("Yaw Rate (r)", f"{car.yaw_rate:.3f} rad/s"),
