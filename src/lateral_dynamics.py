@@ -3,7 +3,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 import math
-from constants import MAX_STEER
+from constants import MAX_STEER, LOW_SPEED_EPSILON
 
 
 def compute_steering_angle(steering_input, max_steer_deg=MAX_STEER):
@@ -16,7 +16,8 @@ def compute_steering_angle(steering_input, max_steer_deg=MAX_STEER):
 
 
 def compute_slip_angles(delta, beta, r, v, b, c):
-    v_safe = max(abs(v), 0.1)
+    v_abs = abs(v)
+    v_safe = math.sqrt(v_abs * v_abs + LOW_SPEED_EPSILON * LOW_SPEED_EPSILON)
     
     alpha_f = delta - beta - (r * b) / v_safe
     alpha_r = -beta + (r * c) / v_safe
@@ -39,7 +40,8 @@ def compute_lateral_forces(alpha_f, alpha_r, c_af, c_ar, max_grip_f, max_grip_r)
 
 
 def compute_lateral_derivatives(f_yf, f_yr, r, v, b, c, mass, i_z):
-    v_safe = max(abs(v), 0.1)
+    v_abs = abs(v)
+    v_safe = math.sqrt(v_abs * v_abs + LOW_SPEED_EPSILON * LOW_SPEED_EPSILON)
     d_r = (f_yf * b - f_yr * c) / i_z
     d_beta = ((f_yf + f_yr) / (mass * v_safe)) - r
     return d_r, d_beta

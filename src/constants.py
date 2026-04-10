@@ -23,9 +23,14 @@ C_AR         = 140000.0 # N/rad (Rear cornering stiffness)
 SCRUB_MULTIPLIER = 7.0  
 YAW_DAMPING_MULTIPLIER = 2.0
 
+# Lateral stability safeguards
+BETA_DAMPING = 0.15
+BETA_HARD_LIMIT = 0.8
+LOW_SPEED_EPSILON = 0.1
+
 # Skid mark visibility scaling (continuous):
 # 1.0 = baseline, <1.0 = less visible/harder to trigger, >1.0 = more visible/easier to trigger
-SKID_MARK_VISIBILITY_SCALE = 0.35
+SKID_MARK_VISIBILITY_SCALE = 0.4
 
 # Base slip thresholds for spawning skid patches.
 # Longitudinal uses wheel slip ratio (unitless), lateral uses slip angle (radians).
@@ -84,4 +89,6 @@ CONST_FIELDS = [
     ("Yaw Inertia",  "I_Z",          "kg.m2", I_Z),
     ("Front C_a",    "C_AF",         "N/rad", C_AF),
     ("Rear C_a",     "C_AR",         "N/rad", C_AR),
+    ("Beta Damping", "BETA_DAMPING", "",      BETA_DAMPING),
+    ("Beta Limit",   "BETA_HARD_LIMIT", "rad", BETA_HARD_LIMIT),
 ]

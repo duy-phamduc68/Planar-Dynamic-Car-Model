@@ -15,6 +15,8 @@ from constants import (
     GRID_SIZE,
     SCRUB_MULTIPLIER,
     YAW_DAMPING_MULTIPLIER,
+    BETA_DAMPING,
+    BETA_HARD_LIMIT,
     SKID_MARK_VISIBILITY_SCALE,
     SKID_MARK_LONG_SLIP_THRESHOLD,
     SKID_MARK_LAT_SLIP_THRESHOLD,
@@ -38,6 +40,7 @@ from controls import (
     XINPUT_BUTTON_A,
     XINPUT_BUTTON_B,
     XINPUT_BUTTON_X,
+    XINPUT_BUTTON_Y,
     XINPUT_BUTTON_RIGHT_THUMB,
     XINPUT_BUTTON_LEFT_SHOULDER,
     XINPUT_BUTTON_RIGHT_SHOULDER,
@@ -310,6 +313,8 @@ class Simulator:
         self.enable_scrub_force = bool(cfg_enable_scrub_force)
         self.scrub_multiplier = float(SCRUB_MULTIPLIER)
         self.yaw_damping_multiplier = float(YAW_DAMPING_MULTIPLIER)
+        self.beta_damping = float(BETA_DAMPING)
+        self.beta_hard_limit = float(BETA_HARD_LIMIT)
         self.skid_mark_visibility_scale = float(SKID_MARK_VISIBILITY_SCALE)
         self.skid_mark_long_slip_threshold = float(SKID_MARK_LONG_SLIP_THRESHOLD)
         self.skid_mark_lat_slip_threshold = float(SKID_MARK_LAT_SLIP_THRESHOLD)
@@ -325,6 +330,8 @@ class Simulator:
         self.car = Vehicle2D()
         self.car.SCRUB_MULTIPLIER = self.scrub_multiplier
         self.car.YAW_DAMPING_MULTIPLIER = self.yaw_damping_multiplier
+        self.car.BETA_DAMPING = self.beta_damping
+        self.car.BETA_HARD_LIMIT = self.beta_hard_limit
         self.sim_time = 0.0
         self._preset_registry = _load_presets_registry()
         self.active_preset = None
@@ -675,6 +682,11 @@ class Simulator:
         self.enable_auto_shift = not self.enable_auto_shift
         self._apply_auto_shift_mode()
 
+    def _toggle_scrub_force(self):
+        self.enable_scrub_force = not self.enable_scrub_force
+        if hasattr(self, "_scrub_cb"):
+            self._scrub_cb.checked = self.enable_scrub_force
+
     def _apply_auto_direction_logic(self):
         """Model3-style auto mode: brake can command reverse and direction changes require near stop."""
         if not hasattr(self.car.engine, "gear"):
@@ -870,6 +882,9 @@ class Simulator:
                     if event.key == pygame.K_r:
                         self.reset_scenario()
                         self._last_keyboard_input_t = now
+                    if event.key == pygame.K_5:
+                        self._toggle_scrub_force()
+                        self._last_keyboard_input_t = now
         return True
 
     def _update_input(self, dt):
@@ -932,6 +947,8 @@ class Simulator:
                 self._toggle_timer()
             if (btns & XINPUT_BUTTON_DPAD_RIGHT) and not (self._btns_prev & XINPUT_BUTTON_DPAD_RIGHT):
                 self._true_form_cb.checked = not self._true_form_cb.checked
+            if (btns & XINPUT_BUTTON_Y) and not (self._btns_prev & XINPUT_BUTTON_Y):
+                self._toggle_scrub_force()
             if (btns & XINPUT_BUTTON_RIGHT_THUMB) and not (self._btns_prev & XINPUT_BUTTON_RIGHT_THUMB):
                 self._toggle_fullscreen()
             self._btns_prev = btns

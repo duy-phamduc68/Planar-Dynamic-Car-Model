@@ -1,8 +1,19 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# physics.py — Vehicle2D wrapper with split longitudinal/lateral dynamics
+# physics.py - Vehicle2D wrapper with split longitudinal/lateral dynamics
 # ─────────────────────────────────────────────────────────────────────────────
 
-from constants import L, CAR_BODY, I_Z, C_AF, C_AR
+import math
+
+from constants import (
+    L,
+    CAR_BODY,
+    I_Z,
+    C_AF,
+    C_AR,
+    YAW_DAMPING_MULTIPLIER,
+    BETA_DAMPING,
+    BETA_HARD_LIMIT,
+)
 from lateral_dynamics import (
     compute_steering_angle,
     compute_slip_angles,
@@ -36,6 +47,9 @@ class Vehicle2D:
         self.I_Z = I_Z
         self.C_AF = C_AF
         self.C_AR = C_AR
+        self.YAW_DAMPING_MULTIPLIER = float(YAW_DAMPING_MULTIPLIER)
+        self.BETA_DAMPING = float(BETA_DAMPING)
+        self.BETA_HARD_LIMIT = float(BETA_HARD_LIMIT)
 
         self.engine_id = LONG5_ENGINE_ID
         self.engine = None
@@ -105,7 +119,6 @@ class Vehicle2D:
         # --- NEW: CALCULATE MODEL 7.5 SCRUB ---
         f_scrub_mag = 0.0
         if enable_scrub:
-            import math
             f_lat_total = abs(self.last_f_yf) + abs(self.last_f_yr)
             # F_scrub = F_lat * sin(beta) * multiplier
             scrub_multiplier = getattr(self, 'SCRUB_MULTIPLIER', 2.5)
@@ -161,16 +174,21 @@ class Vehicle2D:
         d_r, d_beta = compute_lateral_derivatives(
             f_yf, f_yr, self.yaw_rate, v, b, c, self.M, self.I_Z
         )
+        d_beta -= self.beta * getattr(self, 'BETA_DAMPING', 0.15)
         
-        # --- NEW: ROTATIONAL SCRUB (Yaw Damping) ---
+        # Always-on rotational damping keeps yaw dynamics bounded.
+        d_r -= self.yaw_rate * getattr(self, 'YAW_DAMPING_MULTIPLIER', 1.75)
+
+        # Optional extra scrub-specific damping to retain scrub behavior.
         if enable_scrub:
-            # The tires resisting being twisted across the asphalt
-            d_r -= self.yaw_rate * getattr(self, 'YAW_DAMPING_MULTIPLIER', 1.75)
-        # -------------------------------------------
+            d_r -= self.yaw_rate * 0.5
         
         # 4. Integrate states (Euler)
         self.yaw_rate = integrate_state(self.yaw_rate, d_r, dt)
         self.beta = integrate_state(self.beta, d_beta, dt)
+        self.beta = math.atan2(math.sin(self.beta), math.cos(self.beta))
+        beta_limit = abs(getattr(self, 'BETA_HARD_LIMIT', 0.8))
+        self.beta = max(-beta_limit, min(beta_limit, self.beta))
         self.heading = integrate_state(self.heading, self.yaw_rate, dt)
         
         # 5. Position integration with sideslip

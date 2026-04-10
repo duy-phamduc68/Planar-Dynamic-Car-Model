@@ -25,6 +25,7 @@ XINPUT_BUTTON_RIGHT_SHOULDER = 0x0200
 XINPUT_BUTTON_A          = 0x1000
 XINPUT_BUTTON_B          = 0x2000
 XINPUT_BUTTON_X          = 0x4000
+XINPUT_BUTTON_Y          = 0x8000
 
 def load_xinput():
     global _xinput_dll

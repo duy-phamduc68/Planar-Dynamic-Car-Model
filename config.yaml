@@ -1,5 +1,3 @@
-# Recommended config: 0.01 timestep, 120 fps
-
 # 0.001 ; 0.01 ; 0.016
 timestep: 0.001
 

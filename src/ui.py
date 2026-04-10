@@ -264,7 +264,7 @@ class OptionsMenu:
         self.scroll_y = 0
         self.panel = pygame.Rect(0, 0, 0, 0)
 
-        self._tab_order = ["Simulation", "Tuning", "Constants"]
+        self._tab_order = ["Simulation", "Tuning", "Presets"]
         self._active_tab = "Simulation"
         self._section_order = [
             "Simulation Rates",
@@ -274,7 +274,7 @@ class OptionsMenu:
         self._tab_sections = {
             "Simulation": ["Simulation Rates"],
             "Tuning": ["Runtime Tuning"],
-            "Constants": [
+            "Presets": [
                 "Preset Profiles",
             ],
         }
@@ -328,8 +328,8 @@ class OptionsMenu:
                 "section": "Runtime Tuning",
                 "type": "float",
                 "default": getattr(self.sim, "grid_size", 10.0),
-                "lo": 10.0,
-                "hi": 50.0,
+                "lo": 2.0,
+                "hi": 75.0,
                 "apply_attr": "grid_size",
                 "is_dummy": False,
             },
@@ -454,6 +454,30 @@ class OptionsMenu:
                 "is_dummy": False,
             },
             {
+                "key": "tune:beta_damping",
+                "label": "Beta Damping",
+                "unit": "",
+                "section": "Runtime Tuning",
+                "type": "float",
+                "default": getattr(self.sim, "beta_damping", 0.15),
+                "lo": 0.0,
+                "hi": 3.0,
+                "apply_attr": "beta_damping",
+                "is_dummy": False,
+            },
+            {
+                "key": "tune:beta_hard_limit",
+                "label": "Beta Hard Limit",
+                "unit": "rad",
+                "section": "Runtime Tuning",
+                "type": "float",
+                "default": getattr(self.sim, "beta_hard_limit", 0.8),
+                "lo": 0.05,
+                "hi": 2.0,
+                "apply_attr": "beta_hard_limit",
+                "is_dummy": False,
+            },
+            {
                 "key": "tune:skid_mark_visibility_scale",
                 "label": "Skid Visibility Scale",
                 "unit": "",
@@ -535,6 +559,10 @@ class OptionsMenu:
                 return 500.0, 10000.0  # Keep it realistic for a car chassis
             if attr in ("C_AF", "C_AR"):
                 return 5000.0, 200000.0 # From driving on ice to driving on rails
+            if attr == "BETA_DAMPING":
+                return 0.0, 3.0
+            if attr == "BETA_HARD_LIMIT":
+                return 0.05, 2.0
             # ------------------------------
 
             lo = 0.000001
@@ -607,6 +635,10 @@ class OptionsMenu:
                 self.sim.car.SCRUB_MULTIPLIER = val
             if attr == "yaw_damping_multiplier" and hasattr(self.sim.car, "YAW_DAMPING_MULTIPLIER"):
                 self.sim.car.YAW_DAMPING_MULTIPLIER = val
+            if attr == "beta_damping" and hasattr(self.sim.car, "BETA_DAMPING"):
+                self.sim.car.BETA_DAMPING = val
+            if attr == "beta_hard_limit" and hasattr(self.sim.car, "BETA_HARD_LIMIT"):
+                self.sim.car.BETA_HARD_LIMIT = val
             return True
         return False
 
@@ -1203,7 +1235,7 @@ class OptionsMenu:
                 fixed_y = sim_rect.y + 6 + len(TIMESTEP_OPTIONS) * (self._ROW + self._SMALL_GAP) + self._ROW + 22
                 _sec_label(content, font_sm, "Longitudinal Model: Long.5 (fixed)", sim_rect.x + 12, fixed_y, color=TEXT_BRIGHT)
 
-        if self._active_tab == "Constants" and not self._collapsed.get("Preset Profiles", False):
+        if self._active_tab == "Presets" and not self._collapsed.get("Preset Profiles", False):
             if self._ui.get("preset_label_pos") is not None:
                 px, py = self._ui["preset_label_pos"]
                 active = getattr(self.sim, "get_preset_label", lambda: "None")()
