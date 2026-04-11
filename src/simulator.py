@@ -346,6 +346,7 @@ class Simulator:
 
         # World-space rear-wheel slip visuals.
         self._slip_patches = []
+        self._slip_layer = None
         self._toggled_grid_tiles = set()
         self._grid_paint_active = False
         self._grid_paint_value = True
@@ -655,6 +656,7 @@ class Simulator:
 
         self.screen_w, self.screen_h = self.screen.get_size()
         self._layout()
+        self._slip_layer = None
         if hasattr(self, "options") and self.options is not None:
             self.options._build()
 
@@ -794,6 +796,7 @@ class Simulator:
             if event.type == pygame.VIDEORESIZE:
                 self.screen_w, self.screen_h = event.w, event.h
                 self._layout()
+                self._slip_layer = None
                 self.options._build()
 
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE and not self.options.editing_active:
@@ -1104,7 +1107,7 @@ class Simulator:
                 self._fps_display, self._fps_acc, self._fps_frames = self._fps_frames / self._fps_acc, 0.0, 0
 
             if (self.screen.get_size() != (self.screen_w, self.screen_h)):
-                self.screen_w, self.screen_h = self.screen.get_size(); self._layout()
+                self.screen_w, self.screen_h = self.screen.get_size(); self._layout(); self._slip_layer = None
 
             running = self._handle_events()
 
@@ -1136,7 +1139,18 @@ class Simulator:
                 self.grid_size,
                 self._toggled_grid_tiles,
             )
-            draw_slip_patches(self.screen, self._slip_patches, cam_x, cam_y, self.zoom, self.screen_w, self.scene_rect.height)
+            if self._slip_layer is None or self._slip_layer.get_size() != (self.screen_w, self.scene_rect.height):
+                self._slip_layer = pygame.Surface((self.screen_w, self.scene_rect.height), pygame.SRCALPHA)
+            draw_slip_patches(
+                self.screen,
+                self._slip_patches,
+                cam_x,
+                cam_y,
+                self.zoom,
+                self.screen_w,
+                self.scene_rect.height,
+                layer=self._slip_layer,
+            )
             draw_car_topdown(self.screen, self.car, cam_x, cam_y, self.zoom, self.screen_w, self.scene_rect.height, self._true_form_cb.checked)
             draw_trc_slip_warning(self.screen, self.font_sm, self.sim_time, self.scene_rect.height, self.car)
             draw_hud_planar(self.screen, self.hud_rect, self.font_sm, self.font_lg, self.car, self.throttle, self.brake, self.steering, self._fps_display, self.sim_time)

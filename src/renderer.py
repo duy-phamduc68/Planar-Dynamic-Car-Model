@@ -48,16 +48,34 @@ def draw_skidpad(surface, cx, cy, zoom, sw, sh, grid_size_m, toggled_tiles=None)
         pygame.draw.line(surface, ROAD_LINE, (0, y), (sw, y), 1)
 
 
-def draw_slip_patches(surface, patches, cx, cy, zoom, sw, sh):
+def draw_slip_patches(surface, patches, cx, cy, zoom, sw, sh, layer=None):
     """Draw decaying dark tire slip patches in world-space."""
     if not patches:
         return
 
-    layer = pygame.Surface((sw, sh), pygame.SRCALPHA)
+    if layer is None or layer.get_size() != (sw, sh):
+        layer = pygame.Surface((sw, sh), pygame.SRCALPHA)
+    else:
+        layer.fill((0, 0, 0, 0))
+
     ppm = PIXELS_PER_METER * zoom
+    world_half_w = sw / (2.0 * ppm)
+    world_half_h = sh / (2.0 * ppm)
+    min_wx = cx - world_half_w
+    max_wx = cx + world_half_w
+    min_wy = cy - world_half_h
+    max_wy = cy + world_half_h
+
     for patch in patches:
-        sx, sy = _transform(patch["x"], patch["y"], cx, cy, zoom, sw, sh)
         radius_m = max(0.02, float(patch.get("radius_m", 0.1)))
+        px = float(patch.get("x", 0.0))
+        py = float(patch.get("y", 0.0))
+
+        # Cull patches outside the visible world rect (with radius margin).
+        if px + radius_m < min_wx or px - radius_m > max_wx or py + radius_m < min_wy or py - radius_m > max_wy:
+            continue
+
+        sx, sy = _transform(px, py, cx, cy, zoom, sw, sh)
         r_px = max(1, int(radius_m * ppm))
         alpha = int(max(0.0, min(255.0, float(patch.get("alpha", 120.0)))))
         darkness = int(max(0, min(80, int(patch.get("darkness", 26)))))
