@@ -472,7 +472,7 @@ class OptionsMenu:
                 "section": "Runtime Tuning",
                 "type": "float",
                 "default": getattr(self.sim, "beta_hard_limit", 0.8),
-                "lo": 0.05,
+                "lo": 0.00,
                 "hi": 2.0,
                 "apply_attr": "beta_hard_limit",
                 "is_dummy": False,
@@ -562,7 +562,7 @@ class OptionsMenu:
             if attr == "BETA_DAMPING":
                 return 0.0, 3.0
             if attr == "BETA_HARD_LIMIT":
-                return 0.05, 2.0
+                return 0.00, 2.0
             # ------------------------------
 
             lo = 0.000001

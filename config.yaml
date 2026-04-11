@@ -13,8 +13,8 @@ auto_shift: true
 # true ; false
 inverse_steering: true
 
-# Model 7.5 Lateral Scrub (true = dampens drifting, false = raw Model 7 ice physics)
-enable_scrub_force: true
+# Model 7.5 Lateral Scrub
+enable_scrub_force: false
 
 # runtime options:
 kb_throttle_ramp_engage: 0.5
@@ -36,4 +36,4 @@ kb_steer_ramp_release: 0.1
 # "GO_KART"
 # "LIMOUSINE"
 # "MCLAREN_P1" (roughly estimated from public sources, very different from the others)
-preset: "DEFAULT"
+preset: "MCLAREN_P1"
