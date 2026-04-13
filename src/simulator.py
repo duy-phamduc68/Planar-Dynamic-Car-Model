@@ -13,7 +13,6 @@ from constants import (
     BRAKE_RAMP_DEFAULT,
     STEER_RAMP_DEFAULT,
     GRID_SIZE,
-    SCRUB_MULTIPLIER,
     YAW_DAMPING_MULTIPLIER,
     BETA_DAMPING,
     BETA_HARD_LIMIT,
@@ -40,7 +39,6 @@ from controls import (
     XINPUT_BUTTON_A,
     XINPUT_BUTTON_B,
     XINPUT_BUTTON_X,
-    XINPUT_BUTTON_Y,
     XINPUT_BUTTON_RIGHT_THUMB,
     XINPUT_BUTTON_LEFT_SHOULDER,
     XINPUT_BUTTON_RIGHT_SHOULDER,
@@ -158,7 +156,6 @@ def _load_global_settings():
     true_form_default = False
     auto_shift_default = False
     inverse_steering_default = False
-    enable_scrub_force_default = True
     kb_throttle_ramp_engage_default = 0.5
     kb_throttle_ramp_release_default = 0.2
     kb_brake_ramp_engage_default = 0.5
@@ -173,7 +170,6 @@ def _load_global_settings():
     cfg_true_form = None
     cfg_auto_shift = None
     cfg_inverse_steering = None
-    cfg_enable_scrub_force = None
     cfg_kb_throttle_ramp_engage = None
     cfg_kb_throttle_ramp_release = None
     cfg_kb_brake_ramp_engage = None
@@ -205,8 +201,6 @@ def _load_global_settings():
                     cfg_auto_shift = _parse_bool(val)
                 elif key == "inverse_steering":
                     cfg_inverse_steering = _parse_bool(val)
-                elif key == "enable_scrub_force":
-                    cfg_enable_scrub_force = _parse_bool(val)
                 elif key == "kb_throttle_ramp_engage":
                     cfg_kb_throttle_ramp_engage = _parse_scalar(val)
                 elif key == "kb_throttle_ramp_release":
@@ -240,7 +234,6 @@ def _load_global_settings():
     true_form = true_form_default if cfg_true_form is None else cfg_true_form
     auto_shift = auto_shift_default if cfg_auto_shift is None else cfg_auto_shift
     inverse_steering = inverse_steering_default if cfg_inverse_steering is None else cfg_inverse_steering
-    enable_scrub_force = enable_scrub_force_default if cfg_enable_scrub_force is None else cfg_enable_scrub_force
 
     def _pick_pos(parsed, default):
         if parsed is None or parsed <= 0:
@@ -261,7 +254,6 @@ def _load_global_settings():
         true_form,
         auto_shift,
         inverse_steering,
-        enable_scrub_force,
         kb_throttle_ramp_engage,
         kb_throttle_ramp_release,
         kb_brake_ramp_engage,
@@ -276,7 +268,7 @@ class Simulator:
         if os.name == "nt":
             os.environ.setdefault("SDL_HINT_FORCE_RAISEWINDOW", "1")
         pygame.init()
-        pygame.display.set_caption("Car Physics Simulator - Planar Dynamic Car Model with Scrub Force")
+        pygame.display.set_caption("Car Physics Simulator - Planar Dynamic Car Model")
         self._windowed_size = (1280, 720)
         self._is_fullscreen = False
         self.screen = pygame.display.set_mode(self._windowed_size, pygame.RESIZABLE)
@@ -293,7 +285,6 @@ class Simulator:
             cfg_true_form,
             cfg_auto_shift,
             cfg_inverse_steering,
-            cfg_enable_scrub_force,
             cfg_kb_throttle_ramp_engage,
             cfg_kb_throttle_ramp_release,
             cfg_kb_brake_ramp_engage,
@@ -310,8 +301,6 @@ class Simulator:
         self.kb_brake_ramp_release = cfg_kb_brake_ramp_release
         self.kb_steer_ramp_engage = cfg_kb_steer_ramp_engage
         self.kb_steer_ramp_release = cfg_kb_steer_ramp_release
-        self.enable_scrub_force = bool(cfg_enable_scrub_force)
-        self.scrub_multiplier = float(SCRUB_MULTIPLIER)
         self.yaw_damping_multiplier = float(YAW_DAMPING_MULTIPLIER)
         self.beta_damping = float(BETA_DAMPING)
         self.beta_hard_limit = float(BETA_HARD_LIMIT)
@@ -328,7 +317,6 @@ class Simulator:
         
         # Physics Wrapper
         self.car = Vehicle2D()
-        self.car.SCRUB_MULTIPLIER = self.scrub_multiplier
         self.car.YAW_DAMPING_MULTIPLIER = self.yaw_damping_multiplier
         self.car.BETA_DAMPING = self.beta_damping
         self.car.BETA_HARD_LIMIT = self.beta_hard_limit
@@ -363,7 +351,6 @@ class Simulator:
         # UI Elements
         self._menu_btn = pygame.Rect(8, 8, 110, 30)
         self._true_form_cb = CheckBox(130, 14, "True Form", checked=cfg_true_form)
-        self._scrub_cb = CheckBox(250, 14, "Scrub Force", checked=self.enable_scrub_force)
         self.options = OptionsMenu(self)
 
         # Apply config-selected preset after car/options initialization.
@@ -684,11 +671,6 @@ class Simulator:
         self.enable_auto_shift = not self.enable_auto_shift
         self._apply_auto_shift_mode()
 
-    def _toggle_scrub_force(self):
-        self.enable_scrub_force = not self.enable_scrub_force
-        if hasattr(self, "_scrub_cb"):
-            self._scrub_cb.checked = self.enable_scrub_force
-
     def _apply_auto_direction_logic(self):
         """Model3-style auto mode: brake can command reverse and direction changes require near stop."""
         if not hasattr(self.car.engine, "gear"):
@@ -805,7 +787,6 @@ class Simulator:
             # Top UI Overlays
             if event.type == pygame.MOUSEMOTION:
                 self._true_form_cb.handle_event(event)
-                self._scrub_cb.handle_event(event)
                 if (
                     self._grid_paint_active
                     and event.buttons[0]
@@ -823,7 +804,6 @@ class Simulator:
 
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and not self.options.visible:
                 if self._true_form_cb.handle_event(event): continue
-                if self._scrub_cb.handle_event(event): continue
                 if self._menu_btn.collidepoint(event.pos): self.options.toggle(); continue
                 if self.scene_rect.collidepoint(event.pos):
                     tile = self._grid_tile_from_screen(event.pos[0], event.pos[1])
@@ -884,9 +864,6 @@ class Simulator:
                         self._last_keyboard_input_t = now
                     if event.key == pygame.K_r:
                         self.reset_scenario()
-                        self._last_keyboard_input_t = now
-                    if event.key == pygame.K_5:
-                        self._toggle_scrub_force()
                         self._last_keyboard_input_t = now
         return True
 
@@ -950,8 +927,6 @@ class Simulator:
                 self._toggle_timer()
             if (btns & XINPUT_BUTTON_DPAD_RIGHT) and not (self._btns_prev & XINPUT_BUTTON_DPAD_RIGHT):
                 self._true_form_cb.checked = not self._true_form_cb.checked
-            if (btns & XINPUT_BUTTON_Y) and not (self._btns_prev & XINPUT_BUTTON_Y):
-                self._toggle_scrub_force()
             if (btns & XINPUT_BUTTON_RIGHT_THUMB) and not (self._btns_prev & XINPUT_BUTTON_RIGHT_THUMB):
                 self._toggle_fullscreen()
             self._btns_prev = btns
@@ -1026,11 +1001,9 @@ class Simulator:
         lat_slip_intensity_f = max(0.0, (alpha_f - lat_slip_threshold) * (lat_gain * vis_scale))
         
         is_lat_slipping_r = lat_slip_intensity_r > 0.0
-        is_lat_slipping_f = lat_slip_intensity_f > 0.0
-
         speed = abs(self.car.v)
 
-        if is_long_slipping or is_lat_slipping_r or is_lat_slipping_f:
+        if is_long_slipping or is_lat_slipping_r:
             half_track = 0.78
             lat_x = -math.sin(self.car.heading)
             lat_y = math.cos(self.car.heading)
@@ -1068,26 +1041,6 @@ class Simulator:
                         }
                     )
             
-            # Front Axle Patches (Understeer)
-            if is_lat_slipping_f:
-                intensity_f = min(1.0, lat_slip_intensity_f)
-                front_x = self.car.x + self.car.L * math.cos(self.car.heading)
-                front_y = self.car.y + self.car.L * math.sin(self.car.heading)
-                
-                for sign in (-1.0, 1.0):
-                    wx = front_x + sign * half_track * lat_x
-                    wy = front_y + sign * half_track * lat_y
-                    self._slip_patches.append(
-                        {
-                            "x": wx,
-                            "y": wy,
-                            "radius_m": 0.05 + 0.12 * intensity_f,
-                            "alpha": 80.0 + 100.0 * intensity_f,
-                            "darkness": 35, # Lighter marks for front scrub
-                            "decay": 40.0 + 50.0 * intensity_f,
-                        }
-                    )
-
         if self._slip_patches:
             for patch in self._slip_patches:
                 patch["alpha"] -= dt * patch.get("decay", 40.0)
@@ -1115,8 +1068,7 @@ class Simulator:
             if not self.options.visible:
                 accumulator += frame_dt
                 while accumulator >= self.dt:
-                    self.enable_scrub_force = self._scrub_cb.checked
-                    self.car.update(self.dt, self._drive_throttle, self._drive_brake, self.steering, enable_scrub=self.enable_scrub_force)
+                    self.car.update(self.dt, self._drive_throttle, self._drive_brake, self.steering)
                     self._update_slip_visuals(self.dt)
                     self.sim_time += self.dt
                     accumulator -= self.dt
@@ -1182,7 +1134,6 @@ class Simulator:
             self.screen.blit(self.font_sm.render("Options", True, (230, 235, 255)), (25, 15))
             # Checkboxes
             self._true_form_cb.draw(self.screen, self.font_sm)
-            self._scrub_cb.draw(self.screen, self.font_sm)
             # Top-Right Text
             input_src = "Pad" if self.input_mode == "controller" else "KB"
             hud = self.car.get_hud_data()

@@ -418,30 +418,6 @@ class OptionsMenu:
                 "is_dummy": False,
             },
             {
-                "key": "tune:enable_scrub_force",
-                "label": "Model 7.5 Scrub",
-                "unit": "",
-                "section": "Runtime Tuning",
-                "type": "bool",
-                "default": getattr(self.sim, "enable_scrub_force", True),
-                "lo": None,
-                "hi": None,
-                "apply_attr": "enable_scrub_force",
-                "is_dummy": False,
-            },
-            {
-                "key": "tune:scrub_multiplier",
-                "label": "Scrub Multiplier",
-                "unit": "",
-                "section": "Runtime Tuning",
-                "type": "float",
-                "default": getattr(self.sim, "scrub_multiplier", 7.0),
-                "lo": 0.0,
-                "hi": 30.0,
-                "apply_attr": "scrub_multiplier",
-                "is_dummy": False,
-            },
-            {
                 "key": "tune:yaw_damping_multiplier",
                 "label": "Yaw Damping Multiplier",
                 "unit": "",
@@ -629,10 +605,6 @@ class OptionsMenu:
                 self.sim.throttle_ramp = val
             if attr == "kb_steer_ramp_engage" and hasattr(self.sim, "steer_ramp"):
                 self.sim.steer_ramp = val
-            if attr == "enable_scrub_force" and hasattr(self.sim, "enable_scrub_force"):
-                self.sim.enable_scrub_force = val
-            if attr == "scrub_multiplier" and hasattr(self.sim.car, "SCRUB_MULTIPLIER"):
-                self.sim.car.SCRUB_MULTIPLIER = val
             if attr == "yaw_damping_multiplier" and hasattr(self.sim.car, "YAW_DAMPING_MULTIPLIER"):
                 self.sim.car.YAW_DAMPING_MULTIPLIER = val
             if attr == "beta_damping" and hasattr(self.sim.car, "BETA_DAMPING"):
@@ -1142,9 +1114,6 @@ class OptionsMenu:
                             self._field_texts[key] = _fmt_const(new_val)
                             self._apply_resettable_field(key)
                             self._const_editing = None
-                            
-                            if spec.get("apply_attr") == "enable_scrub_force":
-                                self.sim.reset_scenario()
                             
                             return True
                         

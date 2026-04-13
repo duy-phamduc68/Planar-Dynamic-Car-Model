@@ -19,8 +19,6 @@ I_Z          = 2500.0  # kg·m² (Yaw moment of inertia)
 C_AF         = 85000.0  # N/rad (Front cornering stiffness)
 C_AR         = 140000.0 # N/rad (Rear cornering stiffness)
 
-# MODEL 7.5 SCRUB FORCE
-SCRUB_MULTIPLIER = 7.0  
 YAW_DAMPING_MULTIPLIER = 2.0
 
 # Lateral stability safeguards

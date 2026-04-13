@@ -114,18 +114,10 @@ class Vehicle2D:
     @property
     def v(self): return self.engine.v
 
-    def update(self, dt, throttle, brake, steering_input, enable_scrub=True):
-        
-        # --- NEW: CALCULATE MODEL 7.5 SCRUB ---
-        f_scrub_mag = 0.0
-        if enable_scrub:
-            f_lat_total = abs(self.last_f_yf) + abs(self.last_f_yr)
-            # F_scrub = F_lat * sin(beta) * multiplier
-            scrub_multiplier = getattr(self, 'SCRUB_MULTIPLIER', 2.5)
-            f_scrub_mag = f_lat_total * abs(math.sin(self.beta)) * scrub_multiplier
+    def update(self, dt, throttle, brake, steering_input):
 
-        # 1. Longitudinal channel (speed update) - Pass scrub!
-        v = update_longitudinal_speed(self.engine, dt, throttle, brake, f_scrub=f_scrub_mag)
+        # 1. Longitudinal channel (speed update)
+        v = update_longitudinal_speed(self.engine, dt, throttle, brake)
 
         # 2. Get lever arms from the engine's CG geometry mapping
         b = getattr(self.engine, 'b', self.L * 0.5)
@@ -179,15 +171,17 @@ class Vehicle2D:
         # Always-on rotational damping keeps yaw dynamics bounded.
         d_r -= self.yaw_rate * getattr(self, 'YAW_DAMPING_MULTIPLIER', 1.75)
 
-        # Optional extra scrub-specific damping to retain scrub behavior.
-        if enable_scrub:
-            d_r -= self.yaw_rate * 0.5
-        
         # 4. Integrate states (Euler)
         self.yaw_rate = integrate_state(self.yaw_rate, d_r, dt)
+
+        beta_limit = abs(getattr(self, 'BETA_HARD_LIMIT', 0.8))
+        if self.beta >= beta_limit and d_beta > 0.0:
+            d_beta = 0.0
+        elif self.beta <= -beta_limit and d_beta < 0.0:
+            d_beta = 0.0
+
         self.beta = integrate_state(self.beta, d_beta, dt)
         self.beta = math.atan2(math.sin(self.beta), math.cos(self.beta))
-        beta_limit = abs(getattr(self, 'BETA_HARD_LIMIT', 0.8))
         self.beta = max(-beta_limit, min(beta_limit, self.beta))
         self.heading = integrate_state(self.heading, self.yaw_rate, dt)
         

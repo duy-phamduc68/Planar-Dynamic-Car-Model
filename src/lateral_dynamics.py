@@ -21,20 +21,18 @@ def compute_slip_angles(delta, beta, r, v, b, c):
     
     alpha_f = delta - beta - (r * b) / v_safe
     alpha_r = -beta + (r * c) / v_safe
-    
-    limit = 0.17
-    alpha_f = max(-limit, min(limit, alpha_f))
-    alpha_r = max(-limit, min(limit, alpha_r))
-    
+
     return alpha_f, alpha_r
 
 
 def compute_lateral_forces(alpha_f, alpha_r, c_af, c_ar, max_grip_f, max_grip_r):
-    f_yf = c_af * alpha_f
-    f_yr = c_ar * alpha_r
-    
-    f_yf = max(-max_grip_f, min(max_grip_f, f_yf))
-    f_yr = max(-max_grip_r, min(max_grip_r, f_yr))
+    # Use a smooth saturation curve so force response remains continuous near
+    # the grip limit instead of flattening into a hard plateau.
+    grip_f = max(1e-6, float(max_grip_f))
+    grip_r = max(1e-6, float(max_grip_r))
+
+    f_yf = grip_f * math.tanh((c_af * alpha_f) / grip_f)
+    f_yr = grip_r * math.tanh((c_ar * alpha_r) / grip_r)
     
     return f_yf, f_yr
 
