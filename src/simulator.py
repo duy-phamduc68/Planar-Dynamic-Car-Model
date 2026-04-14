@@ -294,6 +294,7 @@ class Simulator:
             cfg_preset,
         ) = _load_global_settings()
         self.grid_size = GRID_SIZE
+        self._spawn_tile = (0, 0)
         self.inverse_steering = bool(cfg_inverse_steering)
         self.kb_throttle_ramp_engage = cfg_kb_throttle_ramp_engage
         self.kb_throttle_ramp_release = cfg_kb_throttle_ramp_release
@@ -606,6 +607,7 @@ class Simulator:
         # Keep default spawn tile at world-origin tile, but centered.
         self.car.x = 0.5 * grid
         self.car.y = 0.5 * grid
+        self._spawn_tile = (0, 0)
 
     def _camera_center(self):
         cam_x = self.car.x + 0.5 * self.car.L * math.cos(self.car.heading)
@@ -1090,6 +1092,7 @@ class Simulator:
                 self.scene_rect.height,
                 self.grid_size,
                 self._toggled_grid_tiles,
+                self._spawn_tile,
             )
             if self._slip_layer is None or self._slip_layer.get_size() != (self.screen_w, self.scene_rect.height):
                 self._slip_layer = pygame.Surface((self.screen_w, self.scene_rect.height), pygame.SRCALPHA)

@@ -26,13 +26,16 @@ def compute_slip_angles(delta, beta, r, v, b, c):
 
 
 def compute_lateral_forces(alpha_f, alpha_r, c_af, c_ar, max_grip_f, max_grip_r):
-    # Use a smooth saturation curve so force response remains continuous near
-    # the grip limit instead of flattening into a hard plateau.
+    # Smoothly saturate tire force with an atan curve.
+    # This keeps low-slip slope equal to cornering stiffness while preserving
+    # more sensitivity than tanh under large slip, improving counter-steer authority.
     grip_f = max(1e-6, float(max_grip_f))
     grip_r = max(1e-6, float(max_grip_r))
 
-    f_yf = grip_f * math.tanh((c_af * alpha_f) / grip_f)
-    f_yr = grip_r * math.tanh((c_ar * alpha_r) / grip_r)
+    scale_f = (math.pi * 0.5) * (c_af * alpha_f) / grip_f
+    scale_r = (math.pi * 0.5) * (c_ar * alpha_r) / grip_r
+    f_yf = grip_f * (2.0 / math.pi) * math.atan(scale_f)
+    f_yr = grip_r * (2.0 / math.pi) * math.atan(scale_r)
     
     return f_yf, f_yr
 

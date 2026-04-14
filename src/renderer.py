@@ -14,7 +14,7 @@ def _transform(wx, wy, cx, cy, zoom, sw, sh):
     sy = int(-(wy - cy) * ppm + sh / 2) # Y is inverted in Pygame
     return sx, sy
 
-def draw_skidpad(surface, cx, cy, zoom, sw, sh, grid_size_m, toggled_tiles=None):
+def draw_skidpad(surface, cx, cy, zoom, sw, sh, grid_size_m, toggled_tiles=None, spawn_tile=None):
     surface.fill(ROAD_COLOR)
     ppm = PIXELS_PER_METER * zoom
     grid_px = max(1.0, grid_size_m * ppm)
@@ -46,6 +46,16 @@ def draw_skidpad(surface, cx, cy, zoom, sw, sh, grid_size_m, toggled_tiles=None)
         pygame.draw.line(surface, ROAD_LINE, (x, 0), (x, sh), 1)
     for y in range(int(-offset_y), sh, int(grid_px)):
         pygame.draw.line(surface, ROAD_LINE, (0, y), (sw, y), 1)
+
+    # Always highlight the spawn tile with a red outline.
+    if spawn_tile is not None:
+        ix, iy = spawn_tile
+        x0 = ix * grid_size_m
+        y0 = iy * grid_size_m
+        sx = int((x0 - cx) * ppm + sw / 2)
+        sy = int(-((y0 + grid_size_m) - cy) * ppm + sh / 2)
+        tile_size_px = max(1, int(grid_size_m * ppm))
+        pygame.draw.rect(surface, (235, 58, 58), (sx, sy, tile_size_px, tile_size_px), 2)
 
 
 def draw_slip_patches(surface, patches, cx, cy, zoom, sw, sh, layer=None):
