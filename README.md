@@ -12,7 +12,7 @@ I try to break down each model both mathematically (continuous math) and impleme
 
 This repository contains code for **Model 7** of the roadmap.
 
-<img alt="drift" src="https://raw.githubusercontent.com/duy-phamduc68/Planar-Dynamic-Car-Model/tree/main/media/showcase.gif" width="100%">
+<img alt="drift" src="https://raw.githubusercontent.com/duy-phamduc68/Planar-Dynamic-Car-Model/refs/heads/main/media/showcase.gif" width="100%">
 
 ## Model 7: High-Speed Lateral Tire Model (2D)
 
